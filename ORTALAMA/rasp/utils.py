@@ -26,36 +26,54 @@ class TCP_HANDLER:
         self.data = None
 
         self.connected = False
-        self.conn, self.server_socket = self.connect()
+        self.conn, self.server_socket = None, None
     
     def connect(self):
         try:
             # TCP Soketi oluştur
             server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # Portu hemen tekrar kullanılabilir yap
             server_socket.bind((self.host, self.port))
             server_socket.listen(1)
 
-            print(f"Sunucu {self.host}:{self.port} üzerinde dinleniyor...")
+            print(f"[TCP]>> TCP Sunucusu başlatıldı. {self.host}:{self.port} portu dinleniyor...")
             
-            conn, addr = server_socket.accept()
+            print("[TCP]>> Yeni bir bağlantı bekleniyor...")
+            while not self.stop_event.is_set():
+                try:
+                    server_socket.settimeout(1.0) # stop_event kontrolü için periyodik timeout
+                    conn, addr = server_socket.accept()
+                except socket.timeout:
+                    continue
+            
+                print(f"[TCP]>> Bağlantı kabul edildi: {addr}")
+                break
 
-            print(f"Bağlantı sağlandı: {addr}")
+            if self.stop_event.is_set() and conn is None:
+                self.close()
+                return None, None
 
+            self.conn, self.server_socket = conn, server_socket
             self.connected = True
+            self.start_receiver()
             return conn, server_socket
         
         except Exception as e:
-            print(f"TCP Baglanti hatası: {e}")
+            print(f"[TCP]>> TCP Baglanti hatası: {e}")
     
     def start_receiver(self):
         threading.Thread(target=self.receive_data, daemon=True).start()
 
     def receive_data(self):
+        if not self.connected:
+            print("[TCP]>> Connect metodu cagirilmamis")
+            exit(1)
         try:
-            while self.stop_event.is_set():
+            print("[TCP]>> Listener baslatildi.")
+            while not self.stop_event.is_set():
                 data_bytes = self.conn.recv(self.BUFFER_SIZE)
                 if not data_bytes:
-                    print("İstemci bağlantıyı kapattı.")
+                    print("[TCP]>> İstemci bağlantıyı kapattı.")
                     break
                 
                 # Gelen veriyi çöz (unpack)
@@ -66,12 +84,17 @@ class TCP_HANDLER:
                 time.sleep(0.05)
                 
         except ConnectionResetError:
-            print("İstemci bağlantıyı kesti.")
+            print("[TCP]>> İstemci bağlantıyı kesti.")
         finally:
-            self.close()
+            if self.connected:
+                self.close()
     
     def send_data(self, data: str):
-        self.conn.sendall(data.encode())
+        if self.connected and self.conn:
+            try:
+                self.conn.sendall(data.encode())
+            except OSError:
+                print("[TCP]>> Veri gönderilemedi, soket kapalı.")
     
     def get_data(self):
         data = None
@@ -81,10 +104,20 @@ class TCP_HANDLER:
         return data
 
     def close(self):
-        if self.connected:
-            self.conn.close()
-            self.server_socket.close()
-            self.connected = False
+        self.connected = False
+        # Soketleri kapatırken None kontrolü yapmak ve try-except kullanmak çökmenin önüne geçer
+        try:
+            if self.conn:
+                self.conn.close()
+        except Exception:
+            pass
+        
+        try:
+            if self.server_socket:
+                self.server_socket.close()
+        except Exception:
+            pass
+        print("[TCP]>> Soketler güvenli bir şekilde kapatıldı.")
 
 
 class VIDEO_HANDLER:
@@ -97,9 +130,13 @@ class VIDEO_HANDLER:
         self.stop_event = stop_event
 
         self.connected = False
-        self.client_socket, self.picam2, self.server_socket = self.connect()
+        self.client_socket, self.picam2, self.server_socket = None, None, None
     
     def connect(self):
+        if self.connected:
+            print("[UDP]>> Video Zaten bagli")
+            return self.client_socket, self.picam2, self.server_socket
+
         try:
             picam2 = Picamera2()
             # Kamera ayarları
@@ -115,22 +152,26 @@ class VIDEO_HANDLER:
             server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             server_socket.bind((self.host, self.port))
             server_socket.listen(1)
-            print(f"Gönderici {self.port} portunda bekleniyor (Picamera2 aktif)...")
+            print(f"[UDP]>> Gönderici {self.port} portunda bekleniyor (Picamera2 aktif)...")
 
             client_socket, addr = server_socket.accept()
             client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1) # Nagle algoritmasını devre dışı bırak
-            print(f"Alıcı bağlandı: {addr}")
+            print(f"[UDP]>> Alıcı bağlandı: {addr}")
 
+            self.client_socket, self.picam2, self.server_socket = client_socket, picam2, server_socket
             self.connected = True
+            self.start_sender()
             return client_socket, picam2, server_socket
 
         except Exception as e:
-            print(f"Kamera baglanti hatasi: {e}")
+            print(f"[UDP]>> Kamera baglanti hatasi: {e}")
             
     def start_sender(self):
         threading.Thread(target=self.sender, daemon=True).start()
 
     def sender(self):
+        if not self.connected:
+            self.client_socket, self.picam2, self.server_socket = self.connect()
         try:
             stream = io.BytesIO()
 
@@ -152,10 +193,10 @@ class VIDEO_HANDLER:
                     self.client_socket.sendall(stream.read())
                 
         except Exception as e:
-            print(f"Kamera/Gönderici Hatası: {e}")
+            print(f"[UDP]>> Kamera/Gönderici Hatası: {e}")
         finally:
             self.close()
-            print("Kamera ve bağlantı kapatıldı.")
+            print("[UDP]>> Kamera ve bağlantı kapatıldı.")
     
     def close(self):
         if self.connected:
@@ -177,32 +218,40 @@ class AURDUINO_HANDLER:
         self.ser_value = None
 
         self.connected = False
-        self.ser = self.connect()
+        self.ser = None
     
     def connect(self):
+        if self.connected:
+            print("[SERIAL]>> Aurduino zaten bagli")
+            return self.ser
+
         try:
             ser = serial.Serial(self.serial_port, self.baud_rate, timeout=1)
             ser.write("0|0".encode("utf-8"))
-            print(f"Seri port açıldı: {self.serial_port} @ {self.baud_rate}")
+            print(f"[SERIAL]>> Seri port açıldı: {self.serial_port} @ {self.baud_rate}")
             time.sleep(2)  # Arduino'nun resetlenmesi için bekle
         except Exception as e:
-            print(f"Seri port açılamadı: {e}")
+            print(f"[SERIAL]>> Seri port açılamadı: {e}")
             # Eğer /dev/ttyUSB0 yoksa /dev/ttyACM0 dene (alternatif)
             try:
                 self.serial_port = '/dev/ttyACM0'
                 ser = serial.Serial(self.serial_port, self.baud_rate, timeout=1)
                 ser.write("0|0")
-                print(f"Seri port açıldı: {self.serial_port} @ {self.baud_rate}")
+                print(f"[SERIAL]>> Seri port açıldı: {self.serial_port} @ {self.baud_rate}")
                 time.sleep(2)
             except Exception as e2:
-                print(f"Alternatif seri port da açılamadı: {e2}")
+                print(f"[SERIAL]>> Alternatif seri port da açılamadı: {e2}")
                 ser = None
                 exit(1)
         
+        self.ser = ser
         self.connected = True
         return ser
 
     def get_value(self):
+        if not self.connected:
+            self.ser = self.connect()
+
         if self.ser.in_waiting > 0:
             return str(self.ser.readline().decode("utf-8", errors='ignore')).strip()
         return None
@@ -237,10 +286,10 @@ def get_distance(repeat=5, LIDAR_ADDRESS = 0x62):
             if 100 < distance_cm < 4000:  # LIDAR'ın ölçebileceği mesafe aralığı
                 distances.append(distance_cm)
             else:
-                print("Geçersiz ölçüm alındı, tekrar deneniyor...")
+                print("[SERIAL]>> Geçersiz ölçüm alındı, tekrar deneniyor...")
             
         except OSError:
-            print("I2C bağlantı hatası! LIDAR bağlı mı?")
+            print("[SERIAL]>> I2C bağlantı hatası! LIDAR bağlı mı?")
             return None  # Bağlantı hatası olursa None döndür
 
         time.sleep(0.001)  # Sensörün stabilize olması için bekleme süresi

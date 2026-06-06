@@ -21,21 +21,15 @@ UDP_PORT = 9999
 JOYSTICK_COM_PORT = "COM15"
 DRONE_ID = 1
 ALT = 5
-VEHICLE_ADDR = "COM6"
+#VEHICLE_ADDR = "COM6"
+VEHICLE_ADDR = "udp:172.22.160.1:14550"
 
 
 # Joystick baglantı ve baglantı testi
 joystick_handler = Joystick_Handler(stop_event=stop_event, port=JOYSTICK_COM_PORT)
-while not joystick_handler.tested:
-    time.sleep(0.05)
 
 # TCP Baglantı ve baglantı testi
 tcp_client = TCPClient(host=RASP_IP, port=TCP_PORT)
-while not tcp_client.tested:
-    time.sleep(0.05)
-
-# Lidar kontrolcusu
-lidar_handler = Lidar_Handler(stop_event=stop_event, joystick_handler=joystick_handler, tcp_client=tcp_client)
 
 # Goruntu aktarma kısmı
 image_handler = Image_Handler(stop_event=stop_event)
@@ -45,6 +39,9 @@ threading.Thread(target=image_handler.udp_camera, args=(RASP_IP, UDP_PORT), daem
 while not image_handler.video_started:
     time.sleep(0.05)
 print("[TESTED]>> Video aktarımı basarili")
+
+# Lidar kontrolcusu
+lidar_handler = Lidar_Handler(stop_event=stop_event, joystick_handler=joystick_handler, tcp_client=tcp_client)
 
 # Drone baglantısı
 vehicle = Vehicle(address=VEHICLE_ADDR, stop_event=stop_event)

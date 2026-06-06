@@ -12,8 +12,10 @@ class TCPClient:
         self.data = None
         self.data_lock = threading.Lock()
 
+        self.client_lock = threading.Lock()
+
         self.connect()
-        
+
         #self.tested = self.test()
         self.tested = True
 
@@ -21,8 +23,10 @@ class TCPClient:
         """Sunucuya bağlantı kurar."""
         try:
             if not self.connected:
-                self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.client_socket.connect((self.host, self.port))
+                with self.client_lock:
+                    self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    self.client_socket.connect((self.host, self.port))
+
                 print(f"Sunucuya ({self.host}:{self.port}) bağlandı.")
                 self.connected = True
                 threading.Thread(target=self.receive_data, daemon=True).start()
@@ -39,7 +43,7 @@ class TCPClient:
         if not self.client_socket:
             print("Bağlantı yok. Lütfen önce connect() metodunu çağırın.")
             return False
-        
+ 
         try:
             # Eğer veri string ise byte formatına çevir
             if isinstance(data, str):
@@ -48,6 +52,7 @@ class TCPClient:
                 data = data.encode('utf-8')
             
             self.client_socket.sendall(data)
+
             return True
         except Exception as e:
             print(f"Veri gönderilirken hata oluştu: {e}")
@@ -57,7 +62,9 @@ class TCPClient:
         print("Veri dinleme baslatildi")
         while self.connected:
             try:
-                data = self.client_socket.recv(buffer_size).decode()
+                with self.client_lock:
+                    data = self.client_socket.recv(buffer_size).decode()
+
                 if data:
                     with self.data_lock:
                         self.data = data
@@ -66,7 +73,7 @@ class TCPClient:
                 print(f"Client>> Receive failed: {e}")
                 break
         
-            time.sleep(0.05)
+            time.sleep(0.5)
 
     def get_data(self):
         with self.data_lock:
@@ -99,6 +106,8 @@ class TCPClient:
         """Bağlantıyı kapatır."""
         self.reset_pos()
         if self.client_socket:
-            self.client_socket.close()
+            with self.client_lock:
+                self.client_socket.close()
+
             self.connected = False
             print("Bağlantı kapatıldı.")

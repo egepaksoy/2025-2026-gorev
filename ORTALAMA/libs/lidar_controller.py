@@ -25,8 +25,8 @@ class Lidar_Handler():
         threading.Thread(target=self.controller, daemon=True).start()
 
     def controller(self):
+        print("[LIDAR_CONTROLLER]>> Started")
         try:
-            self.tcp_client.send_data("0|0")
             while not self.stop_event.is_set():
                 raw_value = self.joystick_handler.get_value()
                 joystick_value = joystick_value_split(raw_value)
