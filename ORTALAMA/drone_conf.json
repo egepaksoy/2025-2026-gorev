@@ -1,15 +1,23 @@
 {
     "address": "com6",
-    "id": 2,
-    "alt": 6,
-    "rasp-ip": "192.168.0.103",
-    "camera-port": 9999,
-    "gimbal-port": 5005,
-    "move-speed": 2,
-    "servo": {
-        "channel": 9,
-        "close_pwm": 1500,
-        "yuk_1": 1800,
-        "yuk_2": 2000
+    "saldiri":
+    {
+        "id": 1,
+        "alt": 5,
+        "rasp-ip": "192.168.0.120",
+        "udp-port": 9999,
+        "tcp-port": 5005,
+        "move-speed": 2,
+        "conf": 0.9
+    },
+    "gozlemci":
+    {
+        "id": 2,
+        "alt": 6,
+        "rasp-ip": "192.168.0.103",
+        "udp-port": 9999,
+        "tcp-port": 5005,
+        "move-speed": 2,
+        "joystick-port": "com15"
     }
 }
