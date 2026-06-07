@@ -22,12 +22,14 @@ class Lidar_Handler():
         self.rasp_value = None
         self.value_lock = threading.Lock()
 
+        self.running = True
+
         threading.Thread(target=self.controller, daemon=True).start()
 
     def controller(self):
         print("[LIDAR_CONTROLLER]>> Started")
         try:
-            while not self.stop_event.is_set():
+            while not self.stop_event.is_set() and self.running:
                 raw_value = self.joystick_handler.get_value()
                 joystick_value = joystick_value_split(raw_value)
                 if joystick_value is None:
@@ -55,3 +57,6 @@ class Lidar_Handler():
             recieved_value = self.rasp_value
             self.rasp_value = None
         return recieved_value
+    
+    def close(self):
+        self.running = False

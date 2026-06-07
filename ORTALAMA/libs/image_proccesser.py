@@ -31,6 +31,8 @@ class Handler:
 
         self.video_started = False
 
+        self.running = True
+
         self.detected_obj = {
             "cls": None,
             "pos": None,
@@ -68,7 +70,7 @@ class Handler:
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         
         try:
-            while not self.stop_event.is_set():
+            while not self.stop_event.is_set() and self.running:
                 _, frame = cap.read()
 
                 if frame is not None:
@@ -154,7 +156,7 @@ class Handler:
             data = b""
             payload_size = struct.calcsize(">L")
             try:
-                while not self.stop_event.is_set():
+                while not self.stop_event.is_set() and self.running:
                     # Önce paketin boyutunu (4 byte) oku
                     while len(data) < payload_size:
                         packet = client_socket.recv(65536)
@@ -189,7 +191,7 @@ class Handler:
         receiver_thread.start()
 
         try:
-            while not self.stop_event.is_set():
+            while not self.stop_event.is_set() and self.running:
                 # En güncel kareyi al
                 with self.frame_lock:
                     frame = self.latest_frame
@@ -283,3 +285,6 @@ class Handler:
 
         self.conf = conf
         self.proccessing = True
+
+    def close(self):
+        self.running = False
