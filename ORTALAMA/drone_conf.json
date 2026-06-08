@@ -1,10 +1,10 @@
 {
-    "address": "com6",
+    "address": "udp:172.22.160.1:14550",
     "saldiri":
     {
-        "id": 1,
+        "id": 2,
         "alt": 5,
-        "rasp-ip": "192.168.0.120",
+        "rasp-ip": "192.168.0.103",
         "udp-port": 9999,
         "tcp-port": 5005,
         "move-speed": 2,
@@ -12,9 +12,9 @@
     },
     "gozlemci":
     {
-        "id": 2,
+        "id": 1,
         "alt": 6,
-        "rasp-ip": "192.168.0.103",
+        "rasp-ip": "192.168.0.120",
         "udp-port": 9999,
         "tcp-port": 5005,
         "move-speed": 2,

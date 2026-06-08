@@ -473,6 +473,26 @@ class Vehicle:
     
     # TODO: send_all_waypoints fonksiyonunu getir
 
+    def go_home(self, alt: int=None, drone_id: int=None):
+        if drone_id is None:
+            drone_id = self.drone_id
+        
+        if alt is None:
+            alt = self.get_pos(drone_id=drone_id)[2]
+        
+        takeoff_pos = self.TAKEOFF_POS[drone_id]
+
+        print(f"{drone_id} idli drone kaklis konumuna donuyor")
+        print(f"Kalkis pozisyonu: {takeoff_pos}")
+        
+        self.go_to(loc=takeoff_pos, alt=alt, drone_id=drone_id)
+        while not self.stop_event.is_set() and not self.on_location(loc=takeoff_pos, drone_id=drone_id):
+            time.sleep(0.1)
+
+        print(f"{drone_id} idli drone kaklis konumuna dondu land aliyor")
+        self.set_mode(mode="LAND", drone_id=drone_id)
+        time.sleep(1)
+
     def close(self):
         """Bağlantıyı ve dinleyici thread'i düzgünce kapatır."""
         

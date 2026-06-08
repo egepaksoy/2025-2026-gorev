@@ -48,8 +48,8 @@ class Lidar_Handler():
 
                 time.sleep(0.1)
 
-        except KeyboardInterrupt:
-            print("CTRL+C ile cikildi")
+        except Exception as e:
+            print(f"[LIDAR_CONTROLLER]>> HATA: {e}")
     
     def get_value(self):
         recieved_value = None

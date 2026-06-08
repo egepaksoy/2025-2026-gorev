@@ -1,0 +1,42 @@
+import threading, time
+
+from pymavlink_custom.pymavlink_custom import Vehicle, failsafe
+
+from gozlemci_handler import Gozlemci
+
+import json
+
+stop_event = threading.Event()
+
+drone_conf = json.load(open("./drone_conf.json", "r"))
+VEHICLE_ADDR = drone_conf["address"]
+
+def main(stop_event: threading.Event=threading.Event()):
+    try:
+        vehicle = Vehicle(address=VEHICLE_ADDR, stop_event=stop_event)
+        gozlemci = Gozlemci(vehicle=vehicle, drone_conf=drone_conf["gozlemci"], stop_event=stop_event)
+
+        gozlemci.baglantilari_kur()
+
+        print("5 SN Bekleniyor")
+        time.sleep(5)
+        
+        print("Ucus gorevi baslatiliyor")
+        gozlemci.ucus_gorevini_baslat()
+
+        while not stop_event.is_set():
+            time.sleep(1)
+
+    except Exception as e:
+        print(e)
+        failsafe(vehicle=vehicle)
+    except KeyboardInterrupt:
+        print("CTRL+C ile cikildi")
+        failsafe(vehicle=vehicle)
+    finally:
+        if stop_event.is_set():
+            stop_event.set()
+
+
+if __name__ == "__main__":
+    main(stop_event=stop_event)

@@ -91,6 +91,7 @@ class Joystick_Handler:
                 else:
                     # Yarım gelen satırları debug için görebilirsin, sonra silebilirsin
                     print(f"[YARIM SATIR ELENDİ]>> {ser_value}")
+                    self.ser.reset_input_buffer()
                     pass
             
             time.sleep(0.01) # Daha hassas okuma için süreyi biraz düşürdük

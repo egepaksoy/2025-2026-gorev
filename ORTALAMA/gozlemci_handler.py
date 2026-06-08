@@ -5,7 +5,7 @@ from libs.lidar_controller import Lidar_Handler
 from libs.joystick_handler import Joystick_Handler
 from libs.tcp_client import TCPClient
 from libs.image_proccesser import Handler as Image_Handler
-from libs.utils import calc_angle_distance
+from libs.utils import calc_angle_distance, joystick_value_split
 
 from pymavlink_custom.pymavlink_custom import Vehicle, failsafe, calc_pos, calc_distance
 
@@ -27,6 +27,9 @@ class Gozlemci:
         
         # Durum ve Kontrol Değişkenleri
         self.stop_event = stop_event
+
+        # Hedefler degiskeni
+        self.hedefler = {}
 
         # Nesne Referansları
         self.joystick_handler = None
@@ -63,7 +66,7 @@ class Gozlemci:
             time.sleep(0.05)
         print("[GOZLEMCI]>> Tüm sistem bağlantıları hazır.")
 
-    def kalkis_ve_hizalama(self):
+    def kalkis(self):
         """Drone'un GUIDED moda geçmesini bekler, kalkış yapar ve kalkış yönüne hizalanır."""
 
         self.vehicle.set_mode(mode="GUIDED", drone_id=self.drone_id)
@@ -80,7 +83,7 @@ class Gozlemci:
 
     def _hedef_koordinat_hesapla(self):
         """Lidar verisini okur ve hedefin mutlak GPS koordinatlarını hesaplar."""
-        print("[GOZLEMCI]>> Hedef işaretleme bekleniyor (Lidar)...")
+        print("[GOZLEMCI]>> Hedef işaretleme baslatildi")
         while not self.stop_event.is_set():
             lidar_value = self.lidar_handler.get_value()
             
@@ -102,32 +105,49 @@ class Gozlemci:
                     print(f"[GOZLEMCI]>> Hesaplanan hedeflenen konum: {hedef_loc}")
                     print(f"[GOZLEMCI]>> Hedefe olan kuş uçuşu 2D uzaklık: {calc_distance(loc1=hedef_loc, loc2=drone_loc):.2f} metre.")
                     
-                    return hedef_loc
+                    while not self.stop_event.is_set():
+                        hedef_adi = input("[HEDEFLEME]>> Hedef adi girin: ")
+                        if hedef_adi in self.hedefler:
+                            print("[HEDEFLEME]>> Hedef mevcut")
+                            continue
+                        else:
+                            print(f"[HEDEFLEME]>> Hedef {hedef_adi} hedeflere eklendi")
+                            self.hedefler[hedef_adi] = hedef_loc
+                            break
+
                 except ValueError as e:
                     print(f"[GOZLEMCI]>> Lidar verisi ayrıştırılırken hata oluştu: {e}")
             
+            if joystick_value_split(self.joystick_handler.get_value())["joy_btn"]:
+                print("[GOZLEMCI]>> Hedef isaretleme tamamlandi")
+                break
+            
             time.sleep(0.1)
-        return None
 
     def ucus_gorevini_baslat(self):
-        """Kalkış, hedef tespit, hedefe gidiş ve dönüş aşamalarını yönetir."""
+        """Gozlemci dronun yapacagi ucus gorevi"""
         try:
-            self.kalkis_ve_hizalama()
+            self.kalkis()
             
             # Lidar ile hedefi bekle ve hesapla
-            hedef_konumu = self._hedef_koordinat_hesapla()
+            self._hedef_koordinat_hesapla()
             
-            if hedef_konumu is not None and not self.stop_event.is_set():
-                print("[GOZLEMCI]>> Hedeflenen konuma gidiliyor...")
-                self.vehicle.go_to(loc=hedef_konumu, alt=self.alt, drone_id=self.drone_id)
+            if self.hedefler != {} and not self.stop_event.is_set():
+                for hedef in self.hedefler:
+                    print(f"[GOZLEMCI]>> {hedef} hedefine gidiliyor...")
 
-                while not self.stop_event.is_set() and not self.vehicle.on_location(loc=hedef_konumu, drone_id=self.drone_id):
-                    time.sleep(0.5)
+                    hedef_konumu = self.hedefler[hedef]
+                    self.vehicle.go_to(loc=hedef_konumu, alt=self.alt, drone_id=self.drone_id)
 
-                if not self.stop_event.is_set():
-                    print("[GOZLEMCI]>> Hedeflenen konuma varıldı. 8 saniye bekleniyor...")
-                    time.sleep(8)
-                    print("[GOZLEMCI]>> Bekleme süresi bitti. Kalkış konumuna dönülüyor (RTL/Failsafe)...")
+                    while not self.stop_event.is_set() and not self.vehicle.on_location(loc=hedef_konumu, drone_id=self.drone_id):
+                        time.sleep(0.5)
+
+                    if not self.stop_event.is_set():
+                        print("[GOZLEMCI]>> Hedeflenen konuma varıldı. 8 saniye bekleniyor...")
+                        time.sleep(8)
+                        print("[GOZLEMCI]>> Bekleme süresi bitti.")
+            
+            self.vehicle.go_home(alt=self.alt, drone_id=self.drone_id)
                     
         except Exception as e:
             print(f"[GOZLEMCI]>> Uçuş sırasında hata meydana geldi: {e}")
@@ -142,6 +162,5 @@ class Gozlemci:
         if not self.stop_event.is_set():
             self.stop_event.set()
             
-        if self.vehicle:
-            failsafe(vehicle=self.vehicle)
-            self.vehicle.close()
+        time.sleep(1)
+        self.vehicle.close()
