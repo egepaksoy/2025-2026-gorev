@@ -205,7 +205,7 @@ class VIDEO_HANDLER:
             self.server_socket.close()
             self.connected = False
 
-class AURDUINO_HANDLER:
+class ARDUINO_HANDLER:
     def __init__(self, serial_port: str='/dev/ttyUSB0', baud_rate: int=9600, stop_event: threading.Event=None):
         self.serial_port = serial_port
         self.baud_rate = baud_rate
@@ -215,14 +215,14 @@ class AURDUINO_HANDLER:
         self.stop_event = stop_event
 
         self.ser_lock = threading.Lock()
-        self.ser_value = None
+        self.ser_value = None  # En güncel veri burada tutulacak
 
         self.connected = False
         self.ser = None
     
     def connect(self):
         if self.connected:
-            print("[SERIAL]>> Aurduino zaten bagli")
+            print("[SERIAL]>> Arduino zaten bagli")
             return self.ser
 
         try:
@@ -232,35 +232,59 @@ class AURDUINO_HANDLER:
             time.sleep(2)  # Arduino'nun resetlenmesi için bekle
         except Exception as e:
             print(f"[SERIAL]>> Seri port açılamadı: {e}")
-            # Eğer /dev/ttyUSB0 yoksa /dev/ttyACM0 dene (alternatif)
             try:
                 self.serial_port = '/dev/ttyACM0'
                 ser = serial.Serial(self.serial_port, self.baud_rate, timeout=1)
-                ser.write("0|0")
+                ser.write("0|0".encode("utf-8"))
                 print(f"[SERIAL]>> Seri port açıldı: {self.serial_port} @ {self.baud_rate}")
                 time.sleep(2)
             except Exception as e2:
                 print(f"[SERIAL]>> Alternatif seri port da açılamadı: {e2}")
-                ser = None
                 exit(1)
         
         self.ser = ser
         self.connected = True
+        
+        # --- YENİ: Arka planda sürekli okuma yapacak thread'i başlatıyoruz ---
+        threading.Thread(target=self._listen_serial, daemon=True).start()
         return ser
 
-    def get_value(self):
-        if not self.connected:
-            self.ser = self.connect()
+    def _listen_serial(self):
+        """Arka planda seri portu sürekli dinleyen metot"""
+        print("[SERIAL]>> Dinleyici thread baslatildi.")
+        while not self.stop_event.is_set() and self.connected:
+            try:
+                if self.ser.in_waiting > 0:
+                    raw_data = self.ser.readline().decode("utf-8", errors='ignore').strip()
+                    if raw_data:  # Boş satır değilse kaydet
+                        with self.ser_lock:
+                            self.ser_value = raw_data
+                else:
+                    time.sleep(0.01)  # İşlemciyi yormamak için kısa bekleme
+            except Exception as e:
+                print(f"[SERIAL]>> Okuma hatası: {e}")
+                break
 
-        if self.ser.in_waiting > 0:
-            return str(self.ser.readline().decode("utf-8", errors='ignore')).strip()
-        return None
+    def get_value(self):
+        """Main döngüsünden çağrılacak metot: En son okunan güncel veriyi döner"""
+        with self.ser_lock:
+            return self.ser_value
     
     def write_value(self, value: str):
-        self.ser.write((value.strip() + '\n').encode('utf-8'))
+        if self.connected and self.ser:
+            try:
+                self.ser.write((value.strip() + '\n').encode('utf-8'))
+            except Exception as e:
+                print(f"[SERIAL]>> Yazma hatası: {e}")
     
     def close(self):
-        self.ser.close()
+        self.connected = False
+        if self.ser:
+            try:
+                self.ser.close()
+            except Exception:
+                pass
+        print("[SERIAL]>> Seri port kapatıldı.")
 
 
 def get_distance(repeat=5, LIDAR_ADDRESS = 0x62):
