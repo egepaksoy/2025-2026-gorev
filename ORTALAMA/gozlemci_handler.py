@@ -132,21 +132,6 @@ class Gozlemci:
             # Lidar ile hedefi bekle ve hesapla
             self._hedef_koordinat_hesapla()
             
-            if self.hedefler != {} and not self.stop_event.is_set():
-                for hedef in self.hedefler:
-                    print(f"[GOZLEMCI]>> {hedef} hedefine gidiliyor...")
-
-                    hedef_konumu = self.hedefler[hedef]
-                    self.vehicle.go_to(loc=hedef_konumu, alt=self.alt, drone_id=self.drone_id)
-
-                    while not self.stop_event.is_set() and not self.vehicle.on_location(loc=hedef_konumu, drone_id=self.drone_id):
-                        time.sleep(0.5)
-
-                    if not self.stop_event.is_set():
-                        print("[GOZLEMCI]>> Hedeflenen konuma varıldı. 8 saniye bekleniyor...")
-                        time.sleep(8)
-                        print("[GOZLEMCI]>> Bekleme süresi bitti.")
-            
             self.vehicle.go_home(alt=self.alt, drone_id=self.drone_id)
                     
         except Exception as e:
