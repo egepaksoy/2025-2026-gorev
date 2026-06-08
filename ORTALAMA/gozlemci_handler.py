@@ -124,7 +124,7 @@ class Gozlemci:
             
             time.sleep(0.1)
 
-    def ucus_gorevini_baslat(self):
+    def gorevi_baslat(self):
         """Gozlemci dronun yapacagi ucus gorevi"""
         try:
             self.kalkis()
