@@ -86,12 +86,7 @@ export default function App() {
   // Varsayılan konum (Kocaeli Üniversitesi Havacılık ve Uzay Bilimleri Fakültesi)
   const [userLocation] = useState([40.712633, 30.026206]); 
   const logEndRef = useRef(null);
-  
-  //!---------EKLENENLER--------
-  const [showTargetPopup, setShowTargetPopup] = useState(false);
-  const [targetNameInput, setTargetNameInput] = useState("");
-  //!--------------------------- 
-  
+
   const isAttackMode = activeDroneIdx === 1;
   const themeColorClass = isAttackMode ? "text-red-500" : "text-cyan-500";
   const themeBorderClass = isAttackMode ? "border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.05)]" : "border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.05)]";
@@ -117,11 +112,6 @@ export default function App() {
             });
           }
         }
-        //!---------EKLENENLER--------
-        if (message.type === 'target_detected') {
-          setShowTargetPopup(true);
-        }
-        //!---------------------------
       };
       globalWs.onclose = () => {
         setIsConnected(false);
@@ -133,22 +123,6 @@ export default function App() {
     connect();
     return () => clearTimeout(reconnectTimeout);
   }, []);
-
-  //!---------EKLENENLER--------
-  const submitTargetName = async (name) => {
-    try {
-      await fetch('http://localhost:8000/command/add-target', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name })
-      });
-      setShowTargetPopup(false);
-      setTargetNameInput("");
-    } catch (err) {
-      console.error("Hedef eklenirken hata oluştu", err);
-    }
-  };
-  //!---------------------------
 
   const sendCommand = async (cmd, drone_id = null) => {
     const time = new Date().toLocaleTimeString([], { hour12: false });
@@ -453,44 +427,6 @@ export default function App() {
             </div>
           </Card>
         </div>
-        {/* YENİ: Popup / Modal UI - Componentin en altına, div bitmeden hemen önce ekle */}
-        {showTargetPopup && (
-          <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center">
-            <div className={cn("bg-[#05070a] border rounded-xl p-6 w-96 shadow-2xl", themeBorderClass)}>
-              <div className="flex items-center gap-2 mb-4">
-                <Target className={cn("w-6 h-6", themeColorClass)} />
-                <h2 className={cn("text-lg font-black uppercase tracking-widest", themeColorClass)}>Hedef Tespit Edildi</h2>
-              </div>
-              
-              <p className="text-xs text-white/50 mb-4 font-mono">Lidar sensöründen yeni bir hedef verisi hesaplandı. Lütfen bu hedef için bir kod girin.</p>
-              
-              <input 
-                type="text" 
-                value={targetNameInput}
-                onChange={(e) => setTargetNameInput(e.target.value)}
-                placeholder="Hedef Adı (Örn: alpha_1)"
-                className="w-full bg-black/50 border border-white/10 rounded-lg p-3 text-white font-mono text-sm mb-6 focus:outline-none focus:border-cyan-500"
-                autoFocus
-                onKeyDown={(e) => e.key === 'Enter' && submitTargetName(targetNameInput || "Bilinmeyen")}
-              />
-              
-              <div className="flex justify-end gap-3">
-                <button 
-                  onClick={() => submitTargetName("")} 
-                  className="px-6 py-2 rounded-lg font-bold text-xs tracking-widest transition-all text-white/50 hover:text-white hover:bg-white/10"
-                >
-                  İPTAL
-                </button>
-                <button 
-                  onClick={() => submitTargetName(targetNameInput || "Bilinmeyen")}
-                  className={cn("px-6 py-2 rounded-lg font-black text-xs tracking-widest transition-all text-black", isAttackMode ? "bg-red-500 hover:bg-red-400" : "bg-cyan-500 hover:bg-cyan-400")}
-                >
-                  ONAYLA
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Küçük Yüzer Bağlantı Durumu */}

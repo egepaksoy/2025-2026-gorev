@@ -88,10 +88,6 @@ saldiri: Optional[Saldiri] = None
 
 cam0 = conf["gozlemci"]["rasp-ip"]
 cam1 = conf["saldiri"]["rasp-ip"]
-
-#!-------EKLENENLER---------
-global_target_queue: List[Any] = []
-#!--------------------------
                 
 #TODO: Bunlar saldiri ve gozlemci handler icinden gelcek
 
@@ -115,11 +111,6 @@ class GotoRequest(BaseModel):
     alt: float
     drone_id: Optional[int] = None
 
-#!-------EKLENENLER---------
-class TargetNameRequest(BaseModel):
-    name: str
-#!--------------------------
-
 # --- Background Telemetry Logic ---
 def telemetry_update_loop():
     global vehicle_instance, telemetry_data, global_logs
@@ -129,20 +120,19 @@ def telemetry_update_loop():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    #!-------EKLENENLER---------
     async def broadcast_telemetry():
         while not system_running.is_set():
             with state_lock:
+                # Prepare data for broadcast
                 drones_list = []
                 for d_id, data in telemetry_data.items():
-                    drones_list.append({"id": d_id, **data})
+                    drones_list.append({
+                        "id": d_id,
+                        **data
+                    })
                 
                 current_logs = list(global_logs)
                 global_logs.clear()
-
-                # YENİ: Hedef kuyruğunu al
-                current_targets = list(global_target_queue)
-                global_target_queue.clear()
 
             if drones_list or current_logs:
                 await manager.broadcast({
@@ -153,16 +143,7 @@ def telemetry_update_loop():
                         "connected": len(drones_list) > 0
                     }
                 })
-            
-            # YENİ: Hedef tespit sinyallerini frontend'e broadcast et
-            for t_loc in current_targets:
-                await manager.broadcast({
-                    "type": "target_detected",
-                    "data": {"loc": t_loc}
-                })
-                
             await asyncio.sleep(0.2) # 5Hz Broadcast Rate
-    #!--------------------------
 
     # Start the broadcast task in the background
     threading.Thread(target=loop.run_until_complete, args=(broadcast_telemetry(),), daemon=True).start()
@@ -211,10 +192,13 @@ async def startup_event():
     global saldiri
 
     try:
-        #!---------EKLENENLER---------
         def init_vehicle():
-            global vehicle_instance, gozlemci, saldiri
+            global vehicle_instance
+            global gozlemci
+            global saldiri
+
             try:
+                # Initial drone_id from config, but it will discover others
                 vehicle_instance = Vehicle(conn_port, stop_event=stop_event)
                 t = threading.Thread(target=telemetry_update_loop, daemon=True)
                 t.start()
@@ -222,19 +206,10 @@ async def startup_event():
                 gozlemci = Gozlemci(vehicle=vehicle_instance, drone_conf=conf["gozlemci"], stop_event=stop_event)
                 saldiri = Saldiri(vehicle=vehicle_instance, drone_conf=conf["saldiri"], stop_event=stop_event)
 
-                # YENİ: Gozlemci'ye Lidar hedef callback fonksiyonunu bağla
-                def target_detected_cb(loc):
-                    with state_lock:
-                        global_target_queue.append(loc)
-                
-                gozlemci.on_target_detected = target_detected_cb
-
                 print("[System] Backend initialized and telemetry loop running.")
             except Exception as e:
                 print(f"[Error] Vehicle connection failed: {e}")
-        #!----------------------------
 
-        
         # Goruntu aktarma threadi
         def start_camera():
             print("[Sistem] Drone baglantilari yapiliyor...")
@@ -422,21 +397,7 @@ def start_mission(background_tasks: BackgroundTasks, drone_id: Optional[int] = N
         
     background_tasks.add_task(handle_mission, )
     return CommandResponse(status="success", message=f"Mission initiated")
-        
-#!---------EKLENENLER---------
-@app.post("/command/add-target", response_model=CommandResponse)
-def add_target(request: TargetNameRequest):
-    if not gozlemci: raise HTTPException(503, "Gozlemci başlatılmadı")
-    
-    # Gözlemci içerisindeki Event'i tetikleyip askıda olan thread'i devam ettir
-    gozlemci.target_name = request.name
-    gozlemci.target_name_event.set()
-    
-    log_msg = f"Hedef Kaydedildi: {request.name}" if request.name else "Hedef ekleme İPTAL edildi."
-    log_send(log_msg, type="warning")
-    
-    return CommandResponse(status="success", message="Target name processed")
-#!----------------------------
+
 
 @app.post("/command/failsafe-mission", response_model=CommandResponse)
 def failsafe_mission():
