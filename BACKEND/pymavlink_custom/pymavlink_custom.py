@@ -7,7 +7,7 @@ from geopy.distance import geodesic # İki koordinat arasındaki mesafeyi (metre
 
 # TODO: terminale yazdırılan mesajlari renkli yazdıran bir fonksiyon yap. ayrıca bu renk temasini arayüzdeki terminalde de birebir göster
 class Vehicle:
-    def __init__(self, address: str = None, stop_event: threading.Event = None, baud: int = 57600, autoreconnect: bool = True, on_flight: bool = True):
+    def __init__(self, address: str = None, stop_event: threading.Event = None, baud: int = 57600, autoreconnect: bool = True, on_flight: bool = True, log_messages: bool=False):
         """
         Gelişmiş Pymavlink Araç Sınıfı.
         Bu sınıf, drone ile iletişimi arka planda sürekli dinleyerek (listener) yönetir.
@@ -34,6 +34,8 @@ class Vehicle:
             self._drones_state = {}
             self.TAKEOFF_POS = {} # Drone'ların kalkış yaptığı koordinatları saklar
             self.DEG = 0.00001172485 # Yaklaşık 1 metrenin enlem/boylam derecesi karşılığı
+
+            self.log_messages = log_messages
 
             # Mesaj Dinleyici Thread'i (Arka planda sürekli çalışır)
             if on_flight:
@@ -129,8 +131,28 @@ class Vehicle:
                     elif msg_type == 'VFR_HUD': # Hız ve İrtifa Özeti
                         state["speed"] = msg.groundspeed # Yer hızı (m/s)
                     
-                    elif msg_type == 'STATUSTEXT': # Drone'dan gelen metin logları
-                        # print(f"[Drone {drone_id} Log] {msg.text}")
+                    elif msg_type == 'STATUSTEXT' and self.log_messages: # Drone'dan gelen metin logları
+                        error_flag = msg.severity
+                        if error_flag == 0:
+                            level = "EMERGENCY"
+                        elif error_flag == 1:
+                            level = "ALERT"
+                        elif error_flag == 2:
+                            level = "CRITICAL"
+                        elif error_flag == 3:
+                            level = "ERROR"
+                        elif error_flag == 4:
+                            level = "WARNING"
+                        elif error_flag == 5:
+                            level = "NOTICE"
+                        elif error_flag == 6:
+                            level = "INFO"
+                        elif error_flag == 7:
+                            level = "DEBUG"
+                        else:
+                            level = "UNKNOWN"
+                        if error_flag < 6:
+                            print(f"[{level}]>> {msg.text}")
                         pass
                     
                     elif msg_type == "MISSION_ITEM_REACHED": # Drone'ın AUTO mod'daki waypoint'i
@@ -154,6 +176,7 @@ class Vehicle:
             try:
                 msg_id = getattr(mavutil.mavlink, f"MAVLINK_MSG_ID_{msg_name}")
                 # Tüm sistemlere (target_system=0) mesaj aralığı ayarı gönder
+                # TODO: burasi calismayabilir
                 self.vehicle.mav.command_long_send(
                     0, 0, # Broadcast (tüm drone'lar)
                     mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, 0,
@@ -273,6 +296,21 @@ class Vehicle:
         except Exception as e:
             print(e)
 
+    def takeoff(self, alt, drone_id: int=None):
+        if drone_id is None:
+            drone_id = self.drone_id
+        
+        try:
+            self.set_mode(mode="GUIDED", drone_id=drone_id)
+            self.arm_disarm(arm=True, drone_id=drone_id)
+            
+            self.multiple_takeoff(alt=alt, drone_id=drone_id)
+            while self.get_pos(drone_id=drone_id)[2] < alt * 0.9:
+                time.sleep(0.5)
+
+        except Exception as e:
+            print(e)
+
     def multiple_takeoff(self, alt, drone_id: int=None):
         """Drone'a kalkış (Takeoff) emri verir."""
 
@@ -382,7 +420,7 @@ class Vehicle:
         except Exception as e:
             print(e)
 
-    def set_yaw(self, turn_angle, default_speed: int=30, drone_id: int=None):
+    def set_yaw(self, turn_angle, default_speed: int=30, relative: bool=True, drone_id: int=None):
         if drone_id is None:
             drone_id = self.drone_id
         
@@ -392,6 +430,12 @@ class Vehicle:
             else:
                 clock_wise = -1
                 turn_angle *= -1
+            
+            if relative is False:
+                if turn_angle > 180:
+                    clock_wise = -1
+                else:
+                    clock_wise = 1
 
             self.vehicle.mav.command_long_send(
                 drone_id,
@@ -401,7 +445,7 @@ class Vehicle:
                 int(turn_angle),               # Yaw açısı
                 default_speed,                      # Dönüş hızı (derece/saniye)
                 clock_wise,                       # Yön (1: Saat yönü, -1: Saat tersi)
-                1,           # Açı göreceli mi? (0: Global, 1: Relative)
+                int(relative),           # Açı göreceli mi? (0: Global, 1: Relative)
                 0, 0, 0                  # Kullanılmayan parametreler
             )
             
@@ -429,12 +473,38 @@ class Vehicle:
     
     # TODO: send_all_waypoints fonksiyonunu getir
 
+    def go_home(self, alt: int=None, drone_id: int=None):
+        if drone_id is None:
+            drone_id = self.drone_id
+        
+        if alt is None:
+            alt = self.get_pos(drone_id=drone_id)[2]
+        
+        takeoff_pos = self.get_home_pos(drone_id=drone_id)
+
+        print(f"{drone_id} idli drone kaklis konumuna donuyor")
+        print(f"Kalkis pozisyonu: {takeoff_pos}")
+        
+        self.go_to(loc=takeoff_pos, alt=alt, drone_id=drone_id)
+        while not self.stop_event.is_set() and not self.on_location(loc=takeoff_pos, drone_id=drone_id):
+            time.sleep(0.1)
+
+        print(f"{drone_id} idli drone kaklis konumuna dondu land aliyor")
+        self.set_mode(mode="LAND", drone_id=drone_id)
+        time.sleep(1)
+
     def close(self):
         """Bağlantıyı ve dinleyici thread'i düzgünce kapatır."""
+        armed = False
+
+        for drone_id in self.get_all_drone_ids():
+            if self.is_armed(drone_id=drone_id):
+                armed = True
+                break
         
-        if not self.stop_event.is_set():
-            self.stop_event.set() # Thread döngüsünü bitir
-        
+        if armed:
+            failsafe(vehicle=self.vehicle)
+
         if hasattr(self, 'vehicle'):
             self.vehicle.close() # Seri portu serbest bırak
 
@@ -446,6 +516,9 @@ def calc_pos(loc, distance, bearing):
 
 def failsafe(vehicle: Vehicle):
     def failsafe_drone_id(vehicle: Vehicle, drone_id: int):
+        if not vehicle.is_armed(drone_id=drone_id):
+            print(f"{drone_id} id'li drone disarm konumunda")
+            return
         home_pos = vehicle.get_home_pos(drone_id)
 
         if home_pos is not None:
@@ -454,7 +527,13 @@ def failsafe(vehicle: Vehicle):
             time.sleep(1)
             vehicle.go_to(loc=home_pos, drone_id=drone_id)
 
-            while not vehicle.on_location(loc=home_pos, sapma=1, drone_id=drone_id):
+            start_time = time.time()
+            while not vehicle.on_location(loc=home_pos, drone_id=drone_id):
+                if time.time() - start_time >= 2:
+                    print(f"Kalkis konumuna kalan mesafe: {calc_distance(home_pos, vehicle.get_pos(drone_id=drone_id))} metre")
+                    print(vehicle.get_pos(drone_id=drone_id))
+                    print(f"stop_event: {vehicle.stop_event.is_set()}")
+                    start_time = time.time()
                 time.sleep(0.5)
             
             print(f"{drone_id}>> LAND aliyor")
@@ -464,8 +543,10 @@ def failsafe(vehicle: Vehicle):
         else:
             print(f"{drone_id}>> RTL alıyor")
             vehicle.set_mode(mode="RTL", drone_id=drone_id)
+            time.sleep(1)
 
 
+    print("Dronelar failsafe alıyor")
     thraeds = []
     for d_id in vehicle.get_all_drone_ids():
         args = (vehicle, d_id)

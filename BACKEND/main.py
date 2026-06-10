@@ -10,8 +10,14 @@ import signal
 from fastapi.responses import StreamingResponse
 from libs.image_proccesser import Handler
 
+# Drone kontrolleri icin
+from gozlemci_handler import Gozlemci
+from saldiri_handler import Saldiri
+
 
 # TODO: ctrl+c'de kamera kapanmadıgı icin kod cikmiyor
+#TODO: failsafe aldiginda gozlemci ve saldiri ihalarının tum baglantıları durdurulsun. gimbal islemleri kapatılsın
+#TODO: saldiri ekranına gecince bir thread hata cıkarıyor ona bak
 # --- WebSocket Connection Manager ---
 class ConnectionManager:
     def __init__(self):
@@ -42,13 +48,13 @@ with_camera = True
 
 # --- Configuration & Paths ---
 PYMAVLINK_PATH = "./pymavlink_custom"
-CONFIG_FILE = "./config.json"
+CONFIG_FILE = "./drone_conf.json"
 
 if PYMAVLINK_PATH not in sys.path:
     sys.path.append(PYMAVLINK_PATH)
 
 try:
-    from pymavlink_custom.pymavlink_custom import Vehicle
+    from pymavlink_custom.pymavlink_custom import Vehicle, failsafe
 except ImportError as e:
     print(f"[Error] Could not import Vehicle: {e}")
     sys.exit(1)
@@ -64,27 +70,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+with open(CONFIG_FILE, "r") as f:
+    conf = json.load(f)
+
+conn_port = conf["address"]
+
 # --- Global State ---
-vehicle_instance: Optional[Vehicle] = None
-# telemetry_data now stores multiple drones keyed by their ID
 telemetry_data: Dict[int, Any] = {}
 global_logs: List[Dict[str, Any]] = []
 state_lock = threading.Lock()
 stop_event = threading.Event()
 system_running = threading.Event()
-        
-with open(CONFIG_FILE, "r") as f:
-    conf = json.load(f)
 
-conn_port = conf["CONN-PORT"]
-ALT = conf["DRONE"]["alt"]
-LOC = conf["DRONE"]["loc"]
+vehicle_instance: Optional[Vehicle] = None
+gozlemci: Optional[Gozlemci] = None
+saldiri: Optional[Saldiri] = None
 
-cam0 = conf["CAM0"]
-cam1 = conf["CAM1"]
+cam0 = conf["gozlemci"]["rasp-ip"]
+cam1 = conf["saldiri"]["rasp-ip"]
                 
-image_handler_0 = Handler(stop_event=stop_event, window_name="Gozlemci goruntu")
-image_handler_1 = Handler(stop_event=stop_event, window_name="Saldırı goruntu")
+#TODO: Bunlar saldiri ve gozlemci handler icinden gelcek
 
 is_running = threading.Event()
 
@@ -183,47 +188,43 @@ def telemetry_update_loop():
 @app.on_event("startup")
 async def startup_event():
     global vehicle_instance
+    global gozlemci
+    global saldiri
+
     try:
         def init_vehicle():
             global vehicle_instance
+            global gozlemci
+            global saldiri
+
             try:
                 # Initial drone_id from config, but it will discover others
                 vehicle_instance = Vehicle(conn_port, stop_event=stop_event)
                 t = threading.Thread(target=telemetry_update_loop, daemon=True)
                 t.start()
+
+                gozlemci = Gozlemci(vehicle=vehicle_instance, drone_conf=conf["gozlemci"], stop_event=stop_event)
+                saldiri = Saldiri(vehicle=vehicle_instance, drone_conf=conf["saldiri"], stop_event=stop_event)
+
                 print("[System] Backend initialized and telemetry loop running.")
             except Exception as e:
                 print(f"[Error] Vehicle connection failed: {e}")
 
         # Goruntu aktarma threadi
         def start_camera():
-            print("[Sistem] Kamera ve Görüntü İşleme başlatılıyor...")
+            print("[Sistem] Drone baglantilari yapiliyor...")
             # image_handler.start_proccessing("yolov8n.pt", conf=0.5)
 
-            image_handler_0.showing_image = False
-            image_handler_1.showing_image = False
-
-            if len(cam0.split()) > 1:
-                print("CAM0 Kablosuz")
-                t0 = threading.Thread(target=image_handler_0.udp_camera, args=(cam0.split()[0], int(cam0.split()[1])), daemon=True)
-            else:
-                t0 = threading.Thread(target=image_handler_0.local_camera, args=(cam0, ), daemon=True)
-
-            if len(cam1.split()) > 1:
-                print("CAM1 Kablosuz")
-                t1 = threading.Thread(target=image_handler_1.udp_camera, args=(cam1.split()[0], int(cam1.split()[1])), daemon=True)
-            else:
-                t1 = threading.Thread(target=image_handler_1.local_camera, args=(cam1, ), daemon=True)
-
-            
-            t0.start()
-            t1.start()
+            gozlemci.baglantilari_kur()
+            saldiri.baglantilari_kur()
 
             print("[System] İki kamera da başlatıldı.")
 
+        vehicle_thread = threading.Thread(target=init_vehicle, daemon=True)
+        vehicle_thread.start()
+        vehicle_thread.join()
         if with_camera:
             threading.Thread(target=start_camera, daemon=True).start() # KAMERAYI BAŞLAT
-        threading.Thread(target=init_vehicle, daemon=True).start()
 
     except Exception as e:
         print(f"[Error] Initialization failed: {e}")
@@ -234,6 +235,11 @@ def shutdown_event():
     system_running.set()
     stop_event.set() # Bu çok önemli, blocking pymavlink çağrılarını uyandırır
     
+    if saldiri:
+        try:
+            saldiri.kapat()
+        except:
+            pass
     if vehicle_instance:
         try:
             vehicle_instance.close()
@@ -247,6 +253,11 @@ def handle_exit(sig, frame):
     system_running.set()
     stop_event.set()
     
+    if saldiri:
+        try:
+            saldiri.kapat()
+        except:
+            pass
     if vehicle_instance:
         try:
             vehicle_instance.close()
@@ -315,8 +326,8 @@ def video_generator(handler: Handler):
 def get_video_feed():
     """Görüntü işleme çıktısını canlı olarak yayınlar."""
     print("feed0")
-    if image_handler_0.video_started:
-        return StreamingResponse(video_generator(image_handler_0), media_type="multipart/x-mixed-replace; boundary=frame")
+    if gozlemci.image_handler.video_started:
+        return StreamingResponse(video_generator(gozlemci.image_handler), media_type="multipart/x-mixed-replace; boundary=frame")
     else:
         return StreamingResponse(None)
 
@@ -324,8 +335,8 @@ def get_video_feed():
 def get_video_feed():
     """Görüntü işleme çıktısını canlı olarak yayınlar."""
     print("feed1")
-    if image_handler_1.video_started:
-        return StreamingResponse(video_generator(image_handler_1), media_type="multipart/x-mixed-replace; boundary=frame")
+    if saldiri.image_handler.video_started:
+        return StreamingResponse(video_generator(saldiri.image_handler), media_type="multipart/x-mixed-replace; boundary=frame")
     else:
         return StreamingResponse(None)
 
@@ -369,78 +380,30 @@ def set_drone_mode(request: ModeRequest):
         log_send(f"Failed to change mode: {str(e)}")
         raise HTTPException(500, f"Failed to change mode: {str(e)}")
 
+#TODO: Burası ayarlancak
 @app.post("/command/start-mission", response_model=CommandResponse)
 def start_mission(background_tasks: BackgroundTasks, drone_id: Optional[int] = None):
     if not vehicle_instance: raise HTTPException(503, "Drone not connected")
     
     stop_event.clear()
-    target_ids = [drone_id] if drone_id else vehicle_instance.get_all_drone_ids()
 
-    def handle_mission(d_ids):
-        for d_id in d_ids:
-            log_send(f"Drone {d_id}: Mission starting: GUIDED mode")
-            vehicle_instance.set_mode(mode="GUIDED", drone_id=d_id)
-            vehicle_instance.arm_disarm(arm=True, drone_id=d_id)
-            log_send(f"Drone {d_id}: Taking off to {ALT}m")
-            vehicle_instance.multiple_takeoff(ALT, drone_id=d_id)
+    def handle_mission():
+        gozlemci.gorevi_baslat()
 
-        # Basic wait loop (simplified for multiple drones)
-        start_time = time.time()
-        while not stop_event.is_set() and time.time() - start_time < 30:
-            time.sleep(1)
+        hedefler = gozlemci.hedefler
+
+        saldiri.gorevi_baslat(hedef_siniflari=hedefler)
         
-        for d_id in d_ids:
-            log_send(f"Drone {d_id}: Moving to destination")
-            vehicle_instance.go_to(loc=LOC, alt=ALT, drone_id=d_id)
         
-    background_tasks.add_task(handle_mission, target_ids)
-    return CommandResponse(status="success", message=f"Mission initiated for {len(target_ids)} drone(s)")
+    background_tasks.add_task(handle_mission, )
+    return CommandResponse(status="success", message=f"Mission initiated")
 
 
 @app.post("/command/failsafe-mission", response_model=CommandResponse)
 def failsafe_mission():
     if not vehicle_instance: raise HTTPException(503, "Drone not connected")
 
-    def failsafe_drone_id(vehicle, drone_id, home_pos=None):
-        if home_pos == None:
-            print(f"{drone_id}>> Failsafe alıyor")
-            vehicle.set_mode(mode="RTL", drone_id=drone_id)
-
-        # guıdedli rtl
-        else:
-            print(f"{drone_id}>> Failsafe alıyor")
-            vehicle.set_mode(mode="GUIDED", drone_id=drone_id)
-
-            alt = vehicle.get_pos(drone_id=drone_id)[2]
-            vehicle.go_to(loc=home_pos, alt=alt, drone_id=drone_id)
-
-            start_time = time.time()
-            while True:
-                if time.time() - start_time > 3:
-                    print(f"{drone_id}>> RTL Alıyor...")
-                    start_time = time.time()
-
-                if vehicle.on_location(loc=home_pos, drone_loc=(telemetry_data["lat"], telemetry_data["lon"]), drone_id=drone_id):
-                    print(f"{drone_id}>> iniş gerçekleşiyor")
-                    vehicle.set_mode(mode="LAND", drone_id=drone_id)
-                    break
-
-    thraeds = []
-    for d_id in vehicle_instance.drone_ids:
-        args = (vehicle_instance, d_id)
-
-        thrd = threading.Thread(target=failsafe_drone_id, args=args)
-        thrd.start()
-        thraeds.append(thrd)
-
-
-    for t in thraeds:
-        t.join()
-
-    print(f"{vehicle_instance.drone_ids} id'li Drone(lar) Failsafe aldi")
-    
-    if not stop_event.is_set():
-        stop_event.set()
+    failsafe(vehicle=vehicle_instance)
 
     return CommandResponse(status="success", message="Landing initiated")
 

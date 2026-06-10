@@ -9,7 +9,7 @@ from pymavlink_custom.pymavlink_custom import Vehicle
 #? Test edilcek
 
 class Saldiri:
-    def __init__(self, vehicle: Vehicle, drone_conf: dict, hedef_siniflari: dict, model_path: str=None, stop_event: threading.Event=threading.Event()):
+    def __init__(self, vehicle: Vehicle, drone_conf: dict, hedef_siniflari: dict=None, model_path: str=None, stop_event: threading.Event=threading.Event()):
         self.drone_conf = drone_conf
 
         self.drone_id = self.drone_conf["id"]
@@ -49,8 +49,10 @@ class Saldiri:
         
         # 1. Görüntü işleme
         self.image_handler = Image_Handler(stop_event=self.stop_event, window_name="Saldiri")
-        self.image_handler.start_proccessing(model_path=self.model_path)
-        self.image_handler.conf = self.conf
+        self.image_handler.showing_image = False
+        if self.model_path is not None:
+            self.image_handler.start_proccessing(model_path=self.model_path)
+            self.image_handler.conf = self.conf
         threading.Thread(target=self.image_handler.udp_camera, args=(self.rasp_ip, self.udp_port), daemon=True).start()
 
         # 2. Gimbal TCP Bağlantısı
@@ -224,8 +226,9 @@ class Saldiri:
             return True
         return False
 
-    def gorevi_baslat(self):
+    def gorevi_baslat(self, hedef_siniflari: dict):
         """Çoklu otonom hedef senaryosunu sırayla işleten ana metod."""
+        self.hedef_siniflari = hedef_siniflari
         try:
             self.kalkis()
             time.sleep(2) 

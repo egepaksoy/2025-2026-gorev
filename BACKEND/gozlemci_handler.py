@@ -51,6 +51,7 @@ class Gozlemci:
 
         # 3. Görüntü Aktarımı
         self.image_handler = Image_Handler(stop_event=self.stop_event, window_name="Gozlemci")
+        self.image_handler.showing_image = False
         self.image_handler.ters = False
         threading.Thread(target=self.image_handler.udp_camera, 
                          args=(self.rasp_ip, self.udp_port), 
@@ -133,6 +134,8 @@ class Gozlemci:
             self._hedef_koordinat_hesapla()
             
             self.vehicle.go_home(alt=self.alt, drone_id=self.drone_id)
+
+            print("[GOZLEMCI]>> Gorevini tamamladi ve guvenli sekilde inis yaptı")
                     
         except Exception as e:
             print(f"[GOZLEMCI]>> Uçuş sırasında hata meydana geldi: {e}")

@@ -480,7 +480,7 @@ class Vehicle:
         if alt is None:
             alt = self.get_pos(drone_id=drone_id)[2]
         
-        takeoff_pos = self.TAKEOFF_POS[drone_id]
+        takeoff_pos = self.get_home_pos(drone_id=drone_id)
 
         print(f"{drone_id} idli drone kaklis konumuna donuyor")
         print(f"Kalkis pozisyonu: {takeoff_pos}")
@@ -495,9 +495,6 @@ class Vehicle:
 
     def close(self):
         """Bağlantıyı ve dinleyici thread'i düzgünce kapatır."""
-        
-        if not self.stop_event.is_set():
-            self.stop_event.set() # Thread döngüsünü bitir
         
         if hasattr(self, 'vehicle'):
             self.vehicle.close() # Seri portu serbest bırak
@@ -518,7 +515,13 @@ def failsafe(vehicle: Vehicle):
             time.sleep(1)
             vehicle.go_to(loc=home_pos, drone_id=drone_id)
 
-            while not vehicle.on_location(loc=home_pos, sapma=1, drone_id=drone_id):
+            start_time = time.time()
+            while not vehicle.on_location(loc=home_pos, drone_id=drone_id):
+                if time.time() - start_time >= 2:
+                    print(f"Kalkis konumuna kalan mesafe: {calc_distance(home_pos, vehicle.get_pos(drone_id=drone_id))} metre")
+                    print(vehicle.get_pos(drone_id=drone_id))
+                    print(f"stop_event: {vehicle.stop_event.is_set()}")
+                    start_time = time.time()
                 time.sleep(0.5)
             
             print(f"{drone_id}>> LAND aliyor")
@@ -528,8 +531,10 @@ def failsafe(vehicle: Vehicle):
         else:
             print(f"{drone_id}>> RTL alıyor")
             vehicle.set_mode(mode="RTL", drone_id=drone_id)
+            time.sleep(1)
 
 
+    print("Dronelar failsafe alıyor")
     thraeds = []
     for d_id in vehicle.get_all_drone_ids():
         args = (vehicle, d_id)
