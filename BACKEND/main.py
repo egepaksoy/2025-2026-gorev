@@ -416,6 +416,7 @@ def start_mission(background_tasks: BackgroundTasks, drone_id: Optional[int] = N
         gozlemci.gorevi_baslat()
 
         hedefler = gozlemci.hedefler
+        print(f"Isaretlenen hedefler: {hedefler}")
 
         saldiri.gorevi_baslat(hedef_siniflari=hedefler)
         
