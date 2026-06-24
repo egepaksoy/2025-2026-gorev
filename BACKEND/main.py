@@ -140,28 +140,35 @@ def telemetry_update_loop():
                 current_logs = list(global_logs)
                 global_logs.clear()
 
-                # YENİ: Hedef kuyruğunu al
                 current_targets = list(global_target_queue)
                 global_target_queue.clear()
 
-            if drones_list or current_logs:
+            # YENİ EKLENEN: Kaydedilen hedefleri güvenli bir şekilde al
+            current_saved_targets = {}
+            if gozlemci is not None:
+                try:
+                    current_saved_targets = gozlemci.hedefler.copy()
+                except Exception:
+                    pass
+
+            if drones_list or current_logs or current_saved_targets is not None:
                 await manager.broadcast({
                     "type": "telemetry",
                     "data": {
                         "drones": drones_list,
                         "logs": current_logs,
+                        "targets": current_saved_targets, # Hedefleri frontend'e gönderiyoruz
                         "connected": len(drones_list) > 0
                     }
                 })
             
-            # YENİ: Hedef tespit sinyallerini frontend'e broadcast et
             for t_loc in current_targets:
                 await manager.broadcast({
                     "type": "target_detected",
                     "data": {"loc": t_loc}
                 })
                 
-            await asyncio.sleep(0.2) # 5Hz Broadcast Rate
+            await asyncio.sleep(0.2)
     #!--------------------------
 
     # Start the broadcast task in the background
@@ -424,7 +431,6 @@ def start_mission(background_tasks: BackgroundTasks, drone_id: Optional[int] = N
     background_tasks.add_task(handle_mission, )
     return CommandResponse(status="success", message=f"Mission initiated")
         
-#!---------EKLENENLER---------
 @app.post("/command/add-target", response_model=CommandResponse)
 def add_target(request: TargetNameRequest):
     if not gozlemci: raise HTTPException(503, "Gozlemci başlatılmadı")
@@ -437,6 +443,21 @@ def add_target(request: TargetNameRequest):
     log_send(log_msg, type="warning")
     
     return CommandResponse(status="success", message="Target name processed")
+
+#!---------EKLENENLER---------
+class TargetDeleteRequest(BaseModel):
+    name: str
+
+@app.post("/command/delete-target", response_model=CommandResponse)
+def delete_target(request: TargetDeleteRequest):
+    if not gozlemci: raise HTTPException(503, "Gozlemci başlatılmadı")
+    
+    if request.name in gozlemci.hedefler:
+        del gozlemci.hedefler[request.name] # Hedefi sözlükten sil
+        log_send(f"Hedef Sistemden Silindi: {request.name}", type="warning")
+        return CommandResponse(status="success", message="Target deleted")
+        
+    return CommandResponse(status="error", message="Target not found")
 #!----------------------------
 
 @app.post("/command/failsafe-mission", response_model=CommandResponse)

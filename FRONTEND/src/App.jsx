@@ -87,9 +87,10 @@ export default function App() {
   const [userLocation] = useState([40.712633, 30.026206]); 
   const logEndRef = useRef(null);
   
-  //!---------EKLENENLER--------
   const [showTargetPopup, setShowTargetPopup] = useState(false);
   const [targetNameInput, setTargetNameInput] = useState("");
+  //!---------EKLENENLER--------
+  const [targets, setTargets] = useState({});
   //!--------------------------- 
   
   const isAttackMode = activeDroneIdx === 1;
@@ -108,8 +109,10 @@ export default function App() {
       globalWs.onopen = () => setIsConnected(true);
       globalWs.onmessage = (event) => {
         const message = JSON.parse(event.data);
+        //!---------EKLENENLER--------
         if (message.type === 'telemetry') {
           if (message.data.drones) setDrones(message.data.drones);
+          if (message.data.targets) setTargets(message.data.targets); // YENİ EKLENEN
           if (message.data.logs) {
             message.data.logs.forEach(log => {
               const time = new Date().toLocaleTimeString([], { hour12: false });
@@ -117,11 +120,10 @@ export default function App() {
             });
           }
         }
-        //!---------EKLENENLER--------
+        //!---------------------------
         if (message.type === 'target_detected') {
           setShowTargetPopup(true);
         }
-        //!---------------------------
       };
       globalWs.onclose = () => {
         setIsConnected(false);
@@ -134,7 +136,6 @@ export default function App() {
     return () => clearTimeout(reconnectTimeout);
   }, []);
 
-  //!---------EKLENENLER--------
   const submitTargetName = async (name) => {
     try {
       await fetch('http://localhost:8000/command/add-target', {
@@ -146,6 +147,19 @@ export default function App() {
       setTargetNameInput("");
     } catch (err) {
       console.error("Hedef eklenirken hata oluştu", err);
+    }
+  };
+  //!---------EKLENENLER--------
+  const deleteTarget = async (name) => {
+    try {
+      await fetch('http://localhost:8000/command/delete-target', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name })
+      });
+      // State güncellenmesine gerek yok, WebSocket "targets" verisini canlı olarak güncelleyecektir.
+    } catch (err) {
+      console.error("Hedef silinirken hata oluştu", err);
     }
   };
   //!---------------------------
@@ -337,6 +351,20 @@ export default function App() {
                   className: '', iconSize: [36, 36], iconAnchor: [18, 18]
                 })} />
               ))}
+              {/* ---------EKLENENLER-------- */}
+              {/* KAYDEDİLEN HEDEFLERİN MARKERLARI */}
+              {Object.entries(targets).map(([name, coords]) => (
+                <Marker key={`target-${name}`} position={[coords[0], coords[1]]} icon={new L.DivIcon({
+                  html: `<div style="position:relative; display:flex; flex-direction:column; align-items:center;">
+                          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" style="filter: drop-shadow(0 0 8px rgba(239,68,68,0.8));">
+                            <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
+                          </svg>
+                          <span style="position:absolute; top:30px; color:white; font-size:9px; font-weight:900; background:rgba(0,0,0,0.8); padding:2px 6px; border-radius:4px; white-space:nowrap; border:1px solid rgba(239,68,68,0.5)">${name}</span>
+                        </div>`,
+                  className: '', iconSize: [28, 28], iconAnchor: [14, 14]
+                })} />
+              ))}
+              {/* --------------------------- */}
             </MapContainer>
             <div className="absolute top-2 left-2 bg-black/80 text-[8px] font-black p-1 rounded border border-white/10 z-[1000] uppercase tracking-widest">Harita Takibi Aktif</div>
           </div>
@@ -452,6 +480,36 @@ export default function App() {
               <button onClick={() => sendCommand('failsafe-mission')} className={cn("w-full py-4 border", isAttackMode ? "text-cyan-500 bg-cyan-950/40 hover:bg-cyan-900/40 border-cyan-900/30 hover:shadow-[0_0_15px_rgba(6,182,212,0.2)]" : "text-red-500 bg-red-950/40 hover:bg-red-900/40 border-red-900/30 hover:shadow-[0_0_15px_rgba(239,68,68,0.2)]" , "font-black rounded-xl transition-all text-[10px] tracking-widest uppercase hover:scale-[1.01] active:scale-95")}>Acil Durum / Failsafe</button>
             </div>
           </Card>
+          {/*!---------EKLENENLER--------*/}
+          {/* YENİ EKLENEN: Hedefler Listesi Kartı */}
+          <Card title="Kaydedilen Hedefler" icon={Target} className={themeBorderClass}>
+            <div className="flex flex-col gap-2 max-h-[160px] overflow-y-auto scrollbar-hide pr-1">
+              {Object.keys(targets).length === 0 ? (
+                <div className="text-[10px] text-white/30 text-center py-4 font-mono uppercase tracking-widest border border-white/5 rounded-lg bg-black/20">
+                  Henüz Hedef Bulunmuyor
+                </div>
+              ) : (
+                Object.entries(targets).map(([name, coords]) => (
+                  <div key={name} className="flex justify-between items-center bg-black/40 border border-white/5 rounded-lg p-2.5 transition-all hover:bg-white/5 hover:border-white/10 group">
+                    <div className="flex flex-col gap-0.5">
+                      <span className={cn("text-xs font-black uppercase tracking-widest", themeColorClass)}>{name}</span>
+                      <span className="text-[9px] text-white/40 font-mono tracking-tight">
+                        {coords[0]?.toFixed(5)}, {coords[1]?.toFixed(5)}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => deleteTarget(name)}
+                      className="p-2 rounded-md bg-red-500/10 text-red-500/50 hover:bg-red-500 hover:text-black transition-all opacity-50 group-hover:opacity-100"
+                      title="Hedefi Sil"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+          {/*!---------------------------*/}
         </div>
         {/* YENİ: Popup / Modal UI - Componentin en altına, div bitmeden hemen önce ekle */}
         {showTargetPopup && (
