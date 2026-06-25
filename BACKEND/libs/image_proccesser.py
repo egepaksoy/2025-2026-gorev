@@ -5,11 +5,28 @@ import threading
 import numpy as np
 import cv2
 from ultralytics import YOLO
+import datetime
+import os
 
 class Handler:
-    def __init__(self, stop_event: threading.Event=None, window_name: str="Goruntu", middle_range: int=0.4):
+    def __init__(self, stop_event: threading.Event=None, window_name: str="Goruntu", middle_range: int=0.4, record_frame: bool=False):
         self.model = None
         self.proccessing = False
+
+        self.record_frame = record_frame
+
+        if self.record_frame:
+            os.makedirs("./outputs", exist_ok=True)
+            
+            self.frame_width = int(1280)
+            self.frame_height = int(720)
+
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            
+            formatted_now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            self.file_name = f"./outputs/{formatted_now}.mp4"
+            self.out = cv2.VideoWriter(self.file_name, fourcc, 15.0, (self.frame_width, self.frame_height))
+            print(f"Video {self.file_name} yoluna kaydediliyor...")
 
         if stop_event is None:
             self.stop_event = threading.Event()
@@ -68,7 +85,7 @@ class Handler:
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        
+
         try:
             while not self.stop_event.is_set() and self.running:
                 _, frame = cap.read()
@@ -76,6 +93,11 @@ class Handler:
                 if frame is not None:
                     if self.ters:
                         frame = cv2.flip(frame, -1)
+
+                    if self.record_frame:
+                        resized_for_record = cv2.resize(frame, (self.frame_width, self.frame_height))
+                        self.out.write(resized_for_record)
+
                     self.screen_res = (int(frame.shape[:2][1]), int(frame.shape[:2][0]))
                     self.screen_center = (self.screen_res[0] / 2, self.screen_res[1] / 2)
 
@@ -136,6 +158,8 @@ class Handler:
         finally:
             # Kamera ve pencereleri güvenli bir şekilde kapat
             cap.release()
+            if self.record_frame:
+                self.out.release()
             cv2.destroyAllWindows()
             print(f"[ImageProcessor] Kamera {camera_path} serbest bırakıldı.")
 
@@ -204,6 +228,11 @@ class Handler:
                 # Goruntu isleme kismi
                 if self.ters:
                     frame = cv2.flip(frame, -1)
+                
+                if self.record_frame:
+                    resized_for_record = cv2.resize(frame, (self.frame_width, self.frame_height))
+                    self.out.write(resized_for_record)
+
                 self.screen_res = (int(frame.shape[:2][1]), int(frame.shape[:2][0]))
                 self.screen_center = (self.screen_res[0] / 2, self.screen_res[1] / 2)
 
@@ -265,6 +294,8 @@ class Handler:
             print(f"Hata: {e}")
         finally:
             client_socket.close()
+            if self.record_frame:
+                self.out.release()
             cv2.destroyAllWindows()
 
     def visualize_box(self, frame):
@@ -288,3 +319,5 @@ class Handler:
 
     def close(self):
         self.running = False
+        if self.record_frame:
+            self.out.release()

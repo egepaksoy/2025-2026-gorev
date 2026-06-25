@@ -19,8 +19,10 @@ class Saldiri:
         self.udp_port = self.drone_conf["udp-port"]
         self.tcp_port = self.drone_conf["tcp-port"]
         self.conf = self.drone_conf["conf"]
+        self.model_path = self.drone_conf["model-path"]
 
-        self.model_path = model_path
+        if model_path is not None:
+            self.model_path = model_path
         self.vehicle = vehicle
         self.stop_event = stop_event
         
@@ -35,7 +37,7 @@ class Saldiri:
         self.scan_on = False
         self.target_locked = False
         self.gimbal_running = True
-        self.gimbal_deadzone = 10
+        self.gimbal_deadzone = 12
         self.camera_deadzone = 5
         
         # Nesne referansları
@@ -51,8 +53,9 @@ class Saldiri:
         self.image_handler = Image_Handler(stop_event=self.stop_event, window_name="Saldiri")
         self.image_handler.showing_image = False
         if self.model_path is not None:
-            self.image_handler.start_proccessing(model_path=self.model_path)
+            self.image_handler.start_proccessing(model_path=self.model_path, conf=self.conf)
             self.image_handler.conf = self.conf
+            print(f"[SALDIRI]>> Goruntu isleme {self.conf} oranıyla {self.model_path} modeli ile baslatildi")
         threading.Thread(target=self.image_handler.udp_camera, args=(self.rasp_ip, self.udp_port), daemon=True).start()
 
         # 2. Gimbal TCP Bağlantısı
@@ -95,7 +98,8 @@ class Saldiri:
         """Gimbal'in aktif hedefi taramasını ve kilitlenmesini sağlar."""
         drone_turned = 0
         last_command_time = 0
-        command_interval = 0.05
+        # Buradaki sure cok kisilirsa algilamadan hareket ederek kendini bozuyor
+        command_interval = 0.5
         
         while not self.stop_event.is_set() and self.gimbal_running:
             if not self.scan_on or self.aktif_hedef is None:
