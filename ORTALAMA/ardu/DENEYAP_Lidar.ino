@@ -30,8 +30,8 @@ void setup() {
   servoY.setPeriodHertz(50);
 
   // Servoları Deneyap pinlerine bağla
-  servoX.attach(servoXPin);
-  servoY.attach(servoYPin);
+  servoX.attach(servoXPin, 500, 2400);
+  servoY.attach(servoYPin, 500, 2400);
 
   // Başlangıç konumuna gönder
   servoX.write(servoX_Val);

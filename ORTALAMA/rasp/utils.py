@@ -30,9 +30,8 @@ class TCP_HANDLER:
     
     def connect(self):
         try:
-            # TCP Soketi oluştur
             server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # Portu hemen tekrar kullanılabilir yap
+            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) 
             server_socket.bind((self.host, self.port))
             server_socket.listen(1)
 
@@ -41,7 +40,7 @@ class TCP_HANDLER:
             print("[TCP]>> Yeni bir bağlantı bekleniyor...")
             while not self.stop_event.is_set():
                 try:
-                    server_socket.settimeout(1.0) # stop_event kontrolü için periyodik timeout
+                    server_socket.settimeout(1.0) 
                     conn, addr = server_socket.accept()
                 except socket.timeout:
                     continue
@@ -76,7 +75,6 @@ class TCP_HANDLER:
                     print("[TCP]>> İstemci bağlantıyı kapattı.")
                     break
                 
-                # Gelen veriyi çöz (unpack)
                 data_str = data_bytes.decode('utf-8').strip()
                 with self.data_lock:
                     self.data = data_str
@@ -105,7 +103,6 @@ class TCP_HANDLER:
 
     def close(self):
         self.connected = False
-        # Soketleri kapatırken None kontrolü yapmak ve try-except kullanmak çökmenin önüne geçer
         try:
             if self.conn:
                 self.conn.close()
@@ -139,15 +136,12 @@ class VIDEO_HANDLER:
 
         try:
             picam2 = Picamera2()
-            # Kamera ayarları
             config = picam2.create_video_configuration(main={"size": (640, 480)})
             picam2.configure(config)
             picam2.start()
             
-            # Kameranın ısınması için kısa bir bekleme
             time.sleep(2)
 
-            # Sunucu (Alıcı) soketini oluştur
             server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             server_socket.bind((self.host, self.port))
@@ -175,18 +169,14 @@ class VIDEO_HANDLER:
         try:
             stream = io.BytesIO()
 
-            # Sürekli olarak JPEG formatında yakala ve gönder
             while not self.stop_event.is_set():
                 stream.seek(0)
                 stream.truncate()
                 
-                # Görüntüyü stream'e JPEG olarak yakala
                 self.picam2.capture_file(stream, format='jpeg')
                 
-                # Verinin boyutunu al
                 image_len = stream.tell()
                 if image_len > 0:
-                    # Önce boyutu (unsigned long), sonra veriyi gönder
                     self.client_socket.sendall(struct.pack(">L", image_len))
                     
                     stream.seek(0)
@@ -215,7 +205,7 @@ class ARDUINO_HANDLER:
         self.stop_event = stop_event
 
         self.ser_lock = threading.Lock()
-        self.ser_value = None  # En güncel veri burada tutulacak
+        self.ser_value = None  
 
         self.connected = False
         self.ser = None
@@ -229,7 +219,7 @@ class ARDUINO_HANDLER:
             ser = serial.Serial(self.serial_port, self.baud_rate, timeout=1)
             ser.write("0|0".encode("utf-8"))
             print(f"[SERIAL]>> Seri port açıldı: {self.serial_port} @ {self.baud_rate}")
-            time.sleep(2)  # Arduino'nun resetlenmesi için bekle
+            time.sleep(2)  
         except Exception as e:
             print(f"[SERIAL]>> Seri port açılamadı: {e}")
             try:
@@ -245,7 +235,6 @@ class ARDUINO_HANDLER:
         self.ser = ser
         self.connected = True
         
-        # --- YENİ: Arka planda sürekli okuma yapacak thread'i başlatıyoruz ---
         threading.Thread(target=self._listen_serial, daemon=True).start()
         return ser
 
@@ -256,11 +245,11 @@ class ARDUINO_HANDLER:
             try:
                 if self.ser.in_waiting > 0:
                     raw_data = self.ser.readline().decode("utf-8", errors='ignore').strip()
-                    if raw_data:  # Boş satır değilse kaydet
+                    if raw_data:  
                         with self.ser_lock:
                             self.ser_value = raw_data
                 else:
-                    time.sleep(0.01)  # İşlemciyi yormamak için kısa bekleme
+                    time.sleep(0.01)  
             except Exception as e:
                 print(f"[SERIAL]>> Okuma hatası: {e}")
                 break
@@ -293,35 +282,33 @@ def get_distance(repeat=5, LIDAR_ADDRESS = 0x62):
     repeat: Ortalama alınacak ölçüm sayısı (Gürültüyü azaltır).
     """
 
-    bus = smbus.SMBus(1)  # Raspberry Pi'de I2C-1 hattı kullanılıyor
+    bus = smbus.SMBus(1)  
     distances = []
     
     for _ in range(repeat):
         try:
-            # LIDAR'a ölçüm yapmasını söyle
             bus.write_byte_data(LIDAR_ADDRESS, 0x00, 0x04)
-            time.sleep(0.02)  # Ölçüm süresi
+            time.sleep(0.02)  
 
-            # 16-bit mesafe verisini oku
             high_byte = bus.read_byte_data(LIDAR_ADDRESS, 0x0f)
             low_byte = bus.read_byte_data(LIDAR_ADDRESS, 0x10)
-            distance_cm = (high_byte << 8) + low_byte  # Mesafeyi cm olarak hesapla
+            distance_cm = (high_byte << 8) + low_byte  
 
-            if 100 < distance_cm < 4000:  # LIDAR'ın ölçebileceği mesafe aralığı
+            if 100 < distance_cm < 4000:  
                 distances.append(distance_cm)
             else:
                 print("[SERIAL]>> Geçersiz ölçüm alındı, tekrar deneniyor...")
             
         except OSError:
             print("[SERIAL]>> I2C bağlantı hatası! LIDAR bağlı mı?")
-            return None  # Bağlantı hatası olursa None döndür
+            return None  
 
-        time.sleep(0.001)  # Sensörün stabilize olması için bekleme süresi
+        time.sleep(0.001) 
     
     if not distances:
-        return None  # Geçerli ölçüm alınamadıysa None döndür
+        return None  
 
-    avg_distance_cm = sum(distances) / len(distances)  # Ölçümleri ortalama alarak hassasiyeti artır
-    avg_distance_m = avg_distance_cm / 100  # Metreye çevir
+    avg_distance_cm = sum(distances) / len(distances)  
+    avg_distance_m = avg_distance_cm / 100  
 
-    return round(avg_distance_m, 3)  # Ölçümü metre cinsinden 3 ondalık basamakla döndür
+    return round(avg_distance_m, 3)  

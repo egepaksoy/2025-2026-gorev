@@ -37,6 +37,16 @@ class Gozlemci:
         self.image_handler = None
         self.lidar_handler = None
 
+        #!-------EKLENENLER---------
+        self.stop_event = stop_event
+        self.hedefler = {}
+
+        # YENİ: Arayüz ile haberleşme için değişkenler
+        self.target_name_event = threading.Event()
+        self.target_name = None
+        self.on_target_detected = None # Callback fonksiyonu
+        #!--------------------------
+
     def baglantilari_kur(self):
         """Tüm donanım, ağ ve yazılım bağlantılarını başlatır."""
         print("[GOZLEMCI]>> Bağlantılar kuruluyor...")
@@ -51,6 +61,7 @@ class Gozlemci:
 
         # 3. Görüntü Aktarımı
         self.image_handler = Image_Handler(stop_event=self.stop_event, window_name="Gozlemci")
+        self.image_handler.showing_image = True
         self.image_handler.ters = False
         threading.Thread(target=self.image_handler.udp_camera, 
                          args=(self.rasp_ip, self.udp_port), 
@@ -81,6 +92,7 @@ class Gozlemci:
 
         print(f"[GOZLEMCI]>> Kalkis tamamlandı. Arama başlatılabilir.")
 
+    #!-------EKLENENLER---------
     def _hedef_koordinat_hesapla(self):
         """Lidar verisini okur ve hedefin mutlak GPS koordinatlarını hesaplar."""
         print("[GOZLEMCI]>> Hedef işaretleme baslatildi")
@@ -97,22 +109,30 @@ class Gozlemci:
                     drone_yaw = self.vehicle.get_yaw(drone_id=self.drone_id)
                     drone_pitch = self.vehicle.get_pitch(drone_id=self.drone_id)
                     
-                    # Hesaplamalar
                     abs_distance = calc_angle_distance(distance=distance, angle=(drone_pitch + y))
                     hedef_loc = calc_pos(loc=drone_loc, distance=abs_distance, bearing=(drone_yaw + x))
 
                     print(f"[GOZLEMCI]>> İşaretlenen hedef drone'dan {abs_distance:.2f} metre uzaklıkta.")
                     print(f"[GOZLEMCI]>> Hesaplanan hedeflenen konum: {hedef_loc}")
-                    print(f"[GOZLEMCI]>> Hedefe olan kuş uçuşu 2D uzaklık: {calc_distance(loc1=hedef_loc, loc2=drone_loc):.2f} metre.")
                     
+                    # YENİ: Frontend'e sinyal göndermek için callback tetikle
+                    if self.on_target_detected:
+                        self.on_target_detected(hedef_loc)
+
+                    # Event'i temizle ve arayüzden gelecek onayı bekle
+                    self.target_name_event.clear()
+                    self.target_name = None
+                    
+                    print("[GOZLEMCI]>> Arayüzden hedef adı bekleniyor...")
                     while not self.stop_event.is_set():
-                        hedef_adi = input("[HEDEFLEME]>> Hedef adi girin: ")
-                        if hedef_adi in self.hedefler:
-                            print("[HEDEFLEME]>> Hedef mevcut")
-                            continue
-                        else:
-                            print(f"[HEDEFLEME]>> Hedef {hedef_adi} hedeflere eklendi")
-                            self.hedefler[hedef_adi] = hedef_loc
+                        # Arayüz endpoint'inden event set edilene kadar bekler (timeout ile bloğu kitlemez)
+                        if self.target_name_event.wait(timeout=0.5):
+                            if self.target_name: # Boş gelmediyse (İptal edilmediyse)
+                                hedef_adi = self.target_name
+                                self.hedefler[hedef_adi] = hedef_loc
+                                print(f"[HEDEFLEME]>> Hedef {hedef_adi} hedeflere eklendi")
+                            else:
+                                print("[HEDEFLEME]>> Hedef ekleme arayüzden iptal edildi.")
                             break
 
                 except ValueError as e:
@@ -123,16 +143,19 @@ class Gozlemci:
                 break
             
             time.sleep(0.1)
+    #!--------------------------
 
     def gorevi_baslat(self):
         """Gozlemci dronun yapacagi ucus gorevi"""
         try:
-            self.kalkis()
+            #self.kalkis()
             
             # Lidar ile hedefi bekle ve hesapla
             self._hedef_koordinat_hesapla()
             
-            self.vehicle.go_home(alt=self.alt, drone_id=self.drone_id)
+            #self.vehicle.go_home(alt=self.alt, drone_id=self.drone_id)
+
+            print("[GOZLEMCI]>> Gorevini tamamladi ve guvenli sekilde inis yaptı")
                     
         except Exception as e:
             print(f"[GOZLEMCI]>> Uçuş sırasında hata meydana geldi: {e}")

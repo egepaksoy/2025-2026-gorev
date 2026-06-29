@@ -1,14 +1,20 @@
-// Gimbal kontrol kodu
-#include <Servo.h>
+#include <ESP32Servo.h>
 
 Servo servo1;
 Servo servo2;
 
+const int servoPin1 = D0; // D0 pini
+const int servoPin2 = D1; // D0 pini
+
+
 void setup() {
   Serial.begin(9600);
-  servo1.attach(9);
-  servo2.attach(8);
-  
+
+  servo1.setPeriodHertz(50); // Standart servo frekansı
+  servo1.attach(servoPin1, 500, 2400); // Pulse aralığını belirleyerek kararlılığı artırın
+
+  servo2.setPeriodHertz(50); // Standart servo frekansı
+  servo2.attach(servoPin2, 500, 2400); // Pulse aralığını belirleyerek kararlılığı artırın  
 }
 
 void loop() {
@@ -39,7 +45,9 @@ void loop() {
     // 2. Servo Kontrol ve Yazdırma
     if (girisAci2 >= 0 && girisAci2 <= 90) {
       servo2.write(cikisAci2);
-
     }
+    Serial.print(cikisAci1);
+    Serial.print(" - ");
+    Serial.println(cikisAci2);
   }
 }

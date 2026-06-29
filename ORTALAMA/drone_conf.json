@@ -8,7 +8,8 @@
         "udp-port": 9999,
         "tcp-port": 5005,
         "move-speed": 2,
-        "conf": 0.9
+        "conf": 0.65,
+        "model-path": "./models/model.pt"
     },
     "gozlemci":
     {

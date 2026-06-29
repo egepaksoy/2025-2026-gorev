@@ -1,11 +1,11 @@
-from pymavlink import mavutil, mavwp # MAVLink protokolü ve görev (waypoint) yönetimi için kütüphaneler
-import serial.tools.list_ports # Bilgisayara bağlı seri portları (USB/COM) listelemek için
-import time # Zaman tabanlı işlemler ve beklemeler için
-import math # Matematiksel hesaplamalar (derece/radyan dönüşümü vb.) için
-import threading # Arka planda eşzamanlı (multithreading) işlemler yürütmek için
-from geopy.distance import geodesic # İki koordinat arasındaki mesafeyi (metre) hesaplamak için
+from pymavlink import mavutil, mavwp 
+import serial.tools.list_ports 
+import time 
+import math 
+import threading 
+from geopy.distance import geodesic 
 
-# TODO: terminale yazdırılan mesajlari renkli yazdıran bir fonksiyon yap. ayrıca bu renk temasini arayüzdeki terminalde de birebir göster
+
 class Vehicle:
     def __init__(self, address: str = None, stop_event: threading.Event = None, baud: int = 57600, autoreconnect: bool = True, on_flight: bool = True, log_messages: bool=False):
         """
@@ -14,46 +14,35 @@ class Vehicle:
         """
 
         try:
-            # Bağlantı adresini kontrol et (Eğer boşsa uygun portu otomatik bulur)
             address = self._check_address(address)
             print(f"[Vehicle]>> Bağlantı adresi: {address}")
             
-            # MAVLink bağlantısını kur
             self.vehicle = mavutil.mavlink_connection(device=address, baud=baud, autoreconnect=autoreconnect)
             
-            # İlk 'Heartbeat' mesajını bekle (Drone'un orada olduğunu doğrular)
             self.vehicle.wait_heartbeat()
             print("[Vehicle]>> Bağlantı başarılı.")
 
-            # Durum Yönetimi Değişkenleri
-            self.stop_event = stop_event if stop_event else threading.Event() # Sistemi durdurmak için sinyal
-            self.state_lock = threading.Lock() # Çoklu drone verilerine güvenli erişim (Race condition engelleme)
+            self.stop_event = stop_event if stop_event else threading.Event() 
+            self.state_lock = threading.Lock() 
             
-            # Tüm drone'ların verilerini tutan merkezi hafıza (Cache)
-            # Yapı: {drone_id: {"lat": 0.0, "lon": 0.0, ...}}
             self._drones_state = {}
-            self.TAKEOFF_POS = {} # Drone'ların kalkış yaptığı koordinatları saklar
-            self.DEG = 0.00001172485 # Yaklaşık 1 metrenin enlem/boylam derecesi karşılığı
+            self.TAKEOFF_POS = {} 
+            self.DEG = 0.00001172485 
 
             self.log_messages = log_messages
 
-            # Mesaj Dinleyici Thread'i (Arka planda sürekli çalışır)
             if on_flight:
-                # Drone'dan belirli mesajları belirli aralıklarla göndermesini iste (Hızlandırma)
                 self._request_initial_telemetry()
 
-                # Mesajlarin dronelara ulasmasi icin 2sn bekleme
                 start_time = time.time()            
                 while time.time() - start_time <= 2:
                     time.sleep(0.2)
 
                 self._listener_thread = threading.Thread(target=self._message_listener_loop, daemon=True)
-                self._listener_thread.start() # Dinleme işlemini başlat
+                self._listener_thread.start() 
 
-                # Varsayılan Drone id
                 self.drone_id = list(self.get_all_drone_ids())[0] if len(self.get_all_drone_ids()) else 0
 
-                # Waypoint (Görev) Yükleyicisi
                 self.wp = mavwp.MAVWPLoader()
 
             print("[Vehicle]>> Uçuş öncesi veriler çekilmesi için 5sn bekleniyor")
@@ -75,7 +64,7 @@ class Vehicle:
                 ports = serial.tools.list_ports.comports()
                 if not ports:
                     Exception("Hicbir baglanti yolu bulunamadi")
-                return ports[0].device # İlk bulduğu portu kullan
+                return ports[0].device 
             return address
         except Exception as e:
             print(e)
@@ -87,15 +76,13 @@ class Vehicle:
                 # Bloklamadan mesaj bekle (0.1sn timeout ile işlemciyi yormaz)
                 msg = self.vehicle.recv_match(blocking=True, timeout=0.1)
                 if not msg:
-                    continue # Mesaj yoksa döngüye devam et
+                    continue 
 
-                # Mesajın geldiği drone ID'sini al
                 drone_id = msg.get_srcSystem()
-                if drone_id == 0 or drone_id == 255: # Yer istasyonu mesajlarını işleme
+                if drone_id == 0 or drone_id == 255: 
                     continue
 
-                with self.state_lock: # Hafızaya yazarken diğer thread'leri kilitle
-                    # Yeni bir drone keşfedildiyse kayıt aç
+                with self.state_lock: 
                     if drone_id not in self._drones_state:
                         self._drones_state[drone_id] = {
                             "lat": 0.0, "lon": 0.0, "alt": 0.0,
@@ -104,34 +91,32 @@ class Vehicle:
                         }
                         print(f"[Vehicle] Yeni drone keşfedildi ID: {drone_id}")
 
-                    # Drone'un son görülme zamanını güncelle
                     state = self._drones_state[drone_id]
                     state["last_seen"] = time.time()
 
                     # Gelen mesajın tipine göre veriyi parse et (ayrıştır)
                     msg_type = msg.get_type()
 
-                    if msg_type == 'GLOBAL_POSITION_INT': # Konum Verisi
-                        state["lat"] = msg.lat / 1e7 # Enlem (7 hane kaydırılmış gelir)
-                        state["lon"] = msg.lon / 1e7 # Boylam
-                        state["alt"] = msg.relative_alt / 1e3 # Göreceli irtifa (metre)
+                    if msg_type == 'GLOBAL_POSITION_INT': 
+                        state["lat"] = msg.lat / 1e7 
+                        state["lon"] = msg.lon / 1e7 
+                        state["alt"] = msg.relative_alt / 1e3 
                     
-                    elif msg_type == 'HEARTBEAT': # Durum Verisi
-                        state["mode"] = mavutil.mode_string_v10(msg) # Uçuş Modu (GUIDED, RTL vb.)
-                        # Silahlı (ARM) durumu kontrolü
+                    elif msg_type == 'HEARTBEAT': 
+                        state["mode"] = mavutil.mode_string_v10(msg) 
                         state["armed"] = bool(msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
                     
-                    elif msg_type == 'ATTITUDE': # Yönelim Verisi
+                    elif msg_type == 'ATTITUDE': 
                         yaw_deg = math.degrees(msg.yaw) if math.degrees(msg.yaw) >= 0 else math.degrees(msg.yaw) + 360.0
                         roll_deg = math.degrees(msg.roll) if math.degrees(msg.roll) >= 0 else math.degrees(msg.roll) + 360.0
                         pitch_deg = math.degrees(msg.pitch) if math.degrees(msg.pitch) >= 0 else math.degrees(msg.pitch) + 360.0
                         yaw_speed = float(msg.yawspeed)
                         state["att"] = {"yaw": yaw_deg, "roll": roll_deg, "pitch": pitch_deg, "yaw_speed": yaw_speed}
                     
-                    elif msg_type == 'VFR_HUD': # Hız ve İrtifa Özeti
-                        state["speed"] = msg.groundspeed # Yer hızı (m/s)
+                    elif msg_type == 'VFR_HUD': 
+                        state["speed"] = msg.groundspeed 
                     
-                    elif msg_type == 'STATUSTEXT' and self.log_messages: # Drone'dan gelen metin logları
+                    elif msg_type == 'STATUSTEXT' and self.log_messages: 
                         error_flag = msg.severity
                         if error_flag == 0:
                             level = "EMERGENCY"
@@ -155,7 +140,7 @@ class Vehicle:
                             print(f"[{level}]>> {msg.text}")
                         pass
                     
-                    elif msg_type == "MISSION_ITEM_REACHED": # Drone'ın AUTO mod'daki waypoint'i
+                    elif msg_type == "MISSION_ITEM_REACHED": 
                         seq = int(msg.seq)
                         state["seq"] = seq if seq else 0
 
@@ -175,8 +160,6 @@ class Vehicle:
         for msg_name, hz in msgs:
             try:
                 msg_id = getattr(mavutil.mavlink, f"MAVLINK_MSG_ID_{msg_name}")
-                # Tüm sistemlere (target_system=0) mesaj aralığı ayarı gönder
-                # TODO: burasi calismayabilir
                 self.vehicle.mav.command_long_send(
                     0, 0, # Broadcast (tüm drone'lar)
                     mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, 0,
@@ -258,7 +241,7 @@ class Vehicle:
             drone_id = self.drone_id
 
         ARM = 1 if arm else 0
-        FORCE_ARM = 21196 if force_arm else 0 # Güvenlik kilidini aşmak gerekirse
+        FORCE_ARM = 21196 if force_arm else 0 
 
         try:
             self.vehicle.mav.command_long_send(
@@ -284,7 +267,7 @@ class Vehicle:
             elif mode == "AUTO":
                 self.vehicle.mav.command_long_send(drone_id, self.vehicle.target_component, mavutil.mavlink.MAV_CMD_MISSION_START, 0, 0, 0, 0, 0, 0, 0, 0)
             else:
-                mode_map = self.vehicle.mode_mapping() # Drone'un desteklediği mod haritasını al
+                mode_map = self.vehicle.mode_mapping() 
                 if mode not in mode_map:
                     Exception(f"{drone_id}>> Geçersiz mod: {mode}")
                     return
@@ -337,7 +320,7 @@ class Vehicle:
             vx, vy, vz = rota
 
             self.vehicle.mav.set_position_target_local_ned_send(
-                0,  # Timestamp
+                0,  
                 drone_id, self.vehicle.target_component,
                 mavutil.mavlink.MAV_FRAME_BODY_NED,  # Koordinat sistemi
                 0b0000111111000111,  # Type mask (sadece hız kullanılacak)
@@ -471,8 +454,6 @@ class Vehicle:
         except Exception as e:
             print(e)
     
-    # TODO: send_all_waypoints fonksiyonunu getir
-
     def go_home(self, alt: int=None, drone_id: int=None):
         if drone_id is None:
             drone_id = self.drone_id
@@ -497,7 +478,7 @@ class Vehicle:
         """Bağlantıyı ve dinleyici thread'i düzgünce kapatır."""
         
         if hasattr(self, 'vehicle'):
-            self.vehicle.close() # Seri portu serbest bırak
+            self.vehicle.close() 
 
 def calc_distance(loc1, loc2):
     return geodesic(loc1[:2], loc2[:2]).meters
