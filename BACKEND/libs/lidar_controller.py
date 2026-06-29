@@ -35,7 +35,8 @@ class Lidar_Handler():
                 if joystick_value is None:
                     continue
 
-                if joystick_value["btn1"] == 1:
+                if joystick_value["btn1"] == 1 or joystick_value["btn2"] == 1:
+                    print("Veri gonderildi")
                     self.tcp_client.send_data("get")
                     
                     recieved_value = self.tcp_client.get_data()

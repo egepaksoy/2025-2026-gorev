@@ -52,6 +52,7 @@ class Saldiri:
         # 1. Görüntü işleme
         self.image_handler = Image_Handler(stop_event=self.stop_event, window_name="Saldiri")
         self.image_handler.showing_image = False
+        self.image_handler.ters = True
         if self.model_path is not None:
             self.image_handler.start_proccessing(model_path=self.model_path, conf=self.conf)
             self.image_handler.conf = self.conf
@@ -85,7 +86,7 @@ class Saldiri:
 
         print(f"[SALDIRI]>> Kalkis tamamlandı. Arama başlatılabilir.")
 
-    def _hedef_algilandi_mi(self, max_gecikme=1.0):
+    def _hedef_algilandi_mi(self, max_gecikme=2.0):
         """YALNIZCA aktif hedefin algılanıp algılanmadığını kontrol eder."""
         with self.image_handler.object_lock:
             obj = self.image_handler.detected_obj
@@ -108,7 +109,7 @@ class Saldiri:
 
             current_time = time.time()
             
-            if self._hedef_algilandi_mi(max_gecikme=1.0):
+            if self._hedef_algilandi_mi():
                 self.target_locked = True
                 drone_turned = 0 
                 
@@ -205,7 +206,8 @@ class Saldiri:
                     time.sleep(1.5)
 
                 # 3. İleri Doğru Hareket
-                speed = (self.move_speed * self.gimbal_pos[0] / 90)
+                #! Burasi ilerlemesi hic durmasin diye
+                speed = (self.move_speed * self.gimbal_pos[0] / 90 + self.move_speed/12)
                 self.vehicle.move_drone((speed, 0, 0), drone_id=self.drone_id)
 
             if not self.gimbal_running:

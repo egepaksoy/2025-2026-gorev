@@ -394,7 +394,7 @@ export default function App() {
               <img 
                 src={`http://localhost:8000/video-feed/${activeDroneIdx}`} 
                 alt={`Drone ${activeDroneIdx} Yayını`}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain"
                 onError={(e) => {
                   // Bağlantı koparsa veya kamera yoksa placeholder'ı göster
                   e.target.style.display = 'none';

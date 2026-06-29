@@ -3,18 +3,18 @@
     "saldiri":
     {
         "id": 2,
-        "alt": 5,
+        "alt": 6,
         "rasp-ip": "192.168.0.103",
         "udp-port": 9999,
         "tcp-port": 5005,
         "move-speed": 2,
         "conf": 0.8,
-        "model-path": "./models/maviaraba.pt"
+        "model-path": "./models/model.pt"
     },
     "gozlemci":
     {
         "id": 1,
-        "alt": 6,
+        "alt": 5,
         "rasp-ip": "192.168.0.120",
         "udp-port": 9999,
         "tcp-port": 5005,
