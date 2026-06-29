@@ -1,5 +1,5 @@
 import time, threading
-from utils import TCP_HANDLER
+from ORTALAMA.rasp.LiDAR.utils import TCP_HANDLER
 
 
 TCP_PORT = 5005     # Dinlenecek port

@@ -1,7 +1,7 @@
 # Raspberry pi kamera ve gimbal kontrol kodu
 import time, threading
 
-from utils import TCP_HANDLER, VIDEO_HANDLER, ARDUINO_HANDLER, get_distance
+from ORTALAMA.rasp.LiDAR.utils import TCP_HANDLER, VIDEO_HANDLER, ARDUINO_HANDLER, get_distance
 
 
 # --- Yapılandırma ---
@@ -13,7 +13,7 @@ TCP_PORT = 5005     # Dinlenecek port
 UDP_PORT = 9999
 
 # AURDUINO AYARLARI
-SERIAL_PORT = '/dev/ttyUSB0' 
+SERIAL_PORT = '/dev/ttyUSB0'
 BAUD_RATE = 9600    # Arduino tarafındaki Serial.begin(9600) ile aynı olmalı
 
 stop_event = threading.Event()
@@ -33,16 +33,16 @@ start_time = time.time()
 while not stop_event.is_set():
     if tcp_handler.connected and arduino_handler.connected and video_handler.connected :
         break
-    
+
     if time.time() - start_time >= 2:
         # \r ile satır başına dönüyoruz, \033[K ile o satırı temizliyoruz
         print(
-            f"\r\033[K[DURUM]>> TCP: {tcp_handler.connected} | Video: {video_handler.connected} | Arduino: {arduino_handler.connected}", 
-            end="", 
+            f"\r\033[K[DURUM]>> TCP: {tcp_handler.connected} | Video: {video_handler.connected} | Arduino: {arduino_handler.connected}",
+            end="",
             flush=True
         )
         start_time = time.time()
-        
+
     time.sleep(0.05)
 
 # Döngü bittiğinde alt satıra geçmek ve temiz bir onay mesajı basmak için:
@@ -60,7 +60,7 @@ def main(stop_event: threading.Event):
             # Alınan veriyi string'e dönüştür (utf-8)
             arduino_handler.write_value(received_data)
             print(f"'{received_data}' verisi Arduino'ya iletildi.")
-        
+
     except KeyboardInterrupt:
         print("\nKullanıcı tarafından durduruldu.")
     except Exception as e:
