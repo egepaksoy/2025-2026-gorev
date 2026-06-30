@@ -1,19 +1,21 @@
 {
-    "address": "udp:172.22.160.1:14550",
+    "address": "com9",
     "saldiri":
     {
-        "id": 2,
+        "id": 1,
         "alt": 6,
         "rasp-ip": "192.168.0.103",
         "udp-port": 9999,
         "tcp-port": 5005,
         "move-speed": 2,
         "conf": 0.8,
-        "model-path": "./models/model.pt"
+        "model-path": "./models/model.pt",
+        "yuk1": {"channel": 13, "kapali": 1500, "acik": 1000},
+        "yuk2": {"channel": 14, "kapali": 1000, "acik": 1600}
     },
     "gozlemci":
     {
-        "id": 1,
+        "id": 2,
         "alt": 5,
         "rasp-ip": "192.168.0.120",
         "udp-port": 9999,

@@ -20,6 +20,18 @@ class Saldiri:
         self.tcp_port = self.drone_conf["tcp-port"]
         self.conf = self.drone_conf["conf"]
         self.model_path = self.drone_conf["model-path"]
+        
+        self.yuk1_channel = self.drone_conf["yuk1"]["channel"]
+        self.yuk1_kapali = self.drone_conf["yuk1"]["kapali"]
+        self.yuk1_acik = self.drone_conf["yuk1"]["acik"]
+        
+        self.yuk2_channel = self.drone_conf["yuk2"]["channel"]
+        self.yuk2_kapali = self.drone_conf["yuk2"]["kapali"]
+        self.yuk2_acik = self.drone_conf["yuk2"]["acik"]
+
+        self.aktif_servo_channel = self.yuk1_channel
+        self.aktif_servo_acik = self.yuk1_acik
+        self.aktif_servo_kapali = self.yuk1_kapali
 
         if model_path is not None:
             self.model_path = model_path
@@ -226,7 +238,10 @@ class Saldiri:
                 time.sleep(0.05)
             
             # Dinamik Servo Tetikleme (yuk_1, yuk_2 vb.)
-            #TODO: yuk birakma ekle
+            self.vehicle.set_servo(channel=self.aktif_servo_channel, pwm=self.aktif_servo_acik, drone_id=self.drone_id)
+            self.aktif_servo_channel = self.yuk2_channel
+            self.aktif_servo_acik = self.yuk2_acik
+            self.aktif_servo_kapali = self.yuk2_kapali
             print(f"[SALDIRI]>> {self.aktif_hedef} için yuk bırakıldı! 5 saniye bekleniyor...")
             time.sleep(5)
             return True

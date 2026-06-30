@@ -420,6 +420,10 @@ def start_mission(background_tasks: BackgroundTasks, drone_id: Optional[int] = N
     stop_event.clear()
 
     def handle_mission():
+        servo_1 = conf["saldiri"]["yuk1"]
+        servo_2 = conf["saldiri"]["yuk2"]
+
+
         gozlemci.gorevi_baslat()
 
         hedefler = gozlemci.hedefler
