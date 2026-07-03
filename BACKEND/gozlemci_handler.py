@@ -60,9 +60,10 @@ class Gozlemci:
         self.tcp_client.connect()
 
         # 3. Görüntü Aktarımı
-        self.image_handler = Image_Handler(stop_event=self.stop_event, window_name="Gozlemci")
+        self.image_handler = Image_Handler(stop_event=self.stop_event, window_name="Gozlemci", show_crosshair=True)
         self.image_handler.showing_image = False
         self.image_handler.ters = False
+        self.image_handler.show_crosshair = True
         threading.Thread(target=self.image_handler.udp_camera, 
                          args=(self.rasp_ip, self.udp_port), 
                          daemon=True).start()
