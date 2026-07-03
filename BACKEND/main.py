@@ -245,7 +245,6 @@ async def startup_event():
         # Goruntu aktarma threadi
         def start_camera():
             print("[Sistem] Drone baglantilari yapiliyor...")
-            # image_handler.start_proccessing("yolov8n.pt", conf=0.5)
 
             gozlemci.baglantilari_kur()
             saldiri.baglantilari_kur()
@@ -420,10 +419,7 @@ def start_mission(background_tasks: BackgroundTasks, drone_id: Optional[int] = N
     stop_event.clear()
 
     def handle_mission():
-        servo_1 = conf["saldiri"]["yuk1"]
-        servo_2 = conf["saldiri"]["yuk2"]
-
-
+        # TODO: burası kaldirilcak
         gozlemci.gorevi_baslat()
 
         hedefler = gozlemci.hedefler
@@ -468,6 +464,7 @@ def delete_target(request: TargetDeleteRequest):
 def failsafe_mission():
     if not vehicle_instance: raise HTTPException(503, "Drone not connected")
 
+    saldiri.kapat()
     failsafe(vehicle=vehicle_instance)
 
     return CommandResponse(status="success", message="Landing initiated")

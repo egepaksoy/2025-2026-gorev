@@ -153,7 +153,8 @@ class Gozlemci:
             # Lidar ile hedefi bekle ve hesapla
             self._hedef_koordinat_hesapla()
             
-            self.vehicle.go_home(alt=self.alt, drone_id=self.drone_id)
+            self.vehicle.set_mode(mode="LAND", drone_id=self.drone_id)
+            #self.vehicle.go_home(alt=self.alt, drone_id=self.drone_id)
 
             print("[GOZLEMCI]>> Gorevini tamamladi ve guvenli sekilde inis yaptı")
                     

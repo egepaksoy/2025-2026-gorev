@@ -43,9 +43,9 @@ class Saldiri:
         self.aktif_hedef = None
         
         # Gimbal Durum Değişkenleri
-        self.gimbal_pos = (90, 90)
+        self.gimbal_pos = (70, 90)
         self.gimbal_pos_min = (0, 0)
-        self.gimbal_pos_max = (90, 180)
+        self.gimbal_pos_max = (70, 180)
         self.scan_on = False
         self.target_locked = False
         self.gimbal_running = True
@@ -87,9 +87,14 @@ class Saldiri:
     
     def kalkis(self):
         """Drone'un kalkış yapmasını sağlar."""
+        print("Saldiri kalkis")
         self.vehicle.set_mode(mode="GUIDED", drone_id=self.drone_id)
+        time.sleep(1)
+        print("arm aliyor")
         self.vehicle.arm_disarm(arm=True, drone_id=self.drone_id)
+        time.sleep(1)
         
+        print("takeoff aliyor")
         self.vehicle.multiple_takeoff(alt=self.alt, drone_id=self.drone_id)
         while not self.stop_event.is_set():
             if abs(self.vehicle.get_pos(drone_id=self.drone_id)[2] - self.alt) <= 0.1:
@@ -98,7 +103,7 @@ class Saldiri:
 
         print(f"[SALDIRI]>> Kalkis tamamlandı. Arama başlatılabilir.")
 
-    def _hedef_algilandi_mi(self, max_gecikme=2.0):
+    def _hedef_algilandi_mi(self, max_gecikme=1.2):
         """YALNIZCA aktif hedefin algılanıp algılanmadığını kontrol eder."""
         with self.image_handler.object_lock:
             obj = self.image_handler.detected_obj
@@ -187,7 +192,7 @@ class Saldiri:
                 self.client.send_data(f"{self.gimbal_pos[0]}|{self.gimbal_pos[1]}")
                 
                 start_time = time.time()
-                while time.time() - start_time <= 0.8:
+                while time.time() - start_time <= 1:
                     if self._hedef_algilandi_mi(): return
                     if self.stop_event.is_set(): return
                     time.sleep(0.1)
@@ -199,34 +204,65 @@ class Saldiri:
         self.target_locked = False
         obj_pos = None
 
-        while not self.stop_event.is_set():
+        hedef_algilandi = False
+        start_time = time.time()
+        while not self.stop_event.is_set() and not hedef_algilandi:
+            if time.time() - start_time >= 2:
+                print(f"gimbal_pos: {self.gimbal_pos}")
+                start_time = time.time()
+
+            # 1. Yük bırakma koşulu (Gimbal tam aşağı bakıyorsa)
+            if (self.gimbal_pos[0] <= self.gimbal_deadzone) and (self._hedef_algilandi_mi() and self.target_locked):
+                print(f"[SALDIRI]>> {self.aktif_hedef} tam üzerinde! Konum kaydediliyor.")
+                obj_pos = self.vehicle.get_pos(drone_id=self.drone_id)
+                hedef_algilandi = True
+                break
+
             if self.target_locked and self._hedef_algilandi_mi():
-                # 1. Yük bırakma koşulu (Gimbal tam aşağı bakıyorsa)
-                if self.gimbal_pos[0] <= self.gimbal_deadzone:
-                    print(f"[SALDIRI]>> {self.aktif_hedef} tam üzerinde! Konum kaydediliyor.")
-                    obj_pos = self.vehicle.get_pos(drone_id=self.drone_id)
-                    break
-                
                 # 2. Drone Yaw Ayarı (Gimbal merkeze hizalı değilse)
                 yaw_farki = 90 - self.gimbal_pos[1]
                 if abs(yaw_farki) > 10:
+                    print("Yaw alma")
                     old_yaw = self.vehicle.get_yaw(drone_id=self.drone_id)
+                    print("old_yaw: ", old_yaw)
                     yaw_acisi = yaw_farki * -1
+                    print("yaw_farki: ", yaw_acisi)
                     self.vehicle.set_yaw(turn_angle=yaw_acisi, drone_id=self.drone_id)
-                    while not self.stop_event.is_set() and abs(self.vehicle.get_yaw(drone_id=self.drone_id) - (old_yaw + yaw_acisi) % 360) > 5:
+                    while not self.stop_event.is_set() and abs(self.vehicle.get_yaw(drone_id=self.drone_id) - (old_yaw + yaw_acisi) % 360) > 9:
+                        if (self.gimbal_pos[0] <= self.gimbal_deadzone) and (self._hedef_algilandi_mi() and self.target_locked):
+                            print(f"[SALDIRI]>> {self.aktif_hedef} tam üzerinde! Konum kaydediliyor.")
+                            obj_pos = self.vehicle.get_pos(drone_id=self.drone_id)
+                            hedef_algilandi = True
+                            break
                         time.sleep(0.05)
-                    time.sleep(1.5)
+                    #! Burası eklendi eskiden time sleep vardı
+                    start_time = time.time()
+                    while not self.stop_event.is_set() and time.time() - start_time >= 0.8:
+                        if (self.gimbal_pos[0] <= self.gimbal_deadzone) and (self._hedef_algilandi_mi() and self.target_locked):
+                            print(f"[SALDIRI]>> {self.aktif_hedef} tam üzerinde! Konum kaydediliyor.")
+                            obj_pos = self.vehicle.get_pos(drone_id=self.drone_id)
+                            hedef_algilandi = True
+                            break
+                        time.sleep(0.05)
+            
+                if (self.gimbal_pos[0] <= self.gimbal_deadzone) and (self._hedef_algilandi_mi() and self.target_locked):
+                    print(f"[SALDIRI]>> {self.aktif_hedef} tam üzerinde! Konum kaydediliyor.")
+                    obj_pos = self.vehicle.get_pos(drone_id=self.drone_id)
+                    hedef_algilandi = True
+                    break
 
+                print("İlerlemeye gecti")
                 # 3. İleri Doğru Hareket
                 #! Burasi ilerlemesi hic durmasin diye
-                speed = (self.move_speed * self.gimbal_pos[0] / 90 + self.move_speed/12)
+                speed = self.move_speed
+                print("İlerleme hızı: ", speed)
                 self.vehicle.move_drone((speed, 0, 0), drone_id=self.drone_id)
 
             if not self.gimbal_running:
                 print(f"[SALDIRI]>> {self.aktif_hedef} takibi iptal oldu.")
                 break
             
-            time.sleep(0.1)
+            time.sleep(0.05)
 
         # Hedefe varıldıysa Yük Bırakma
         if obj_pos is not None:
@@ -239,11 +275,14 @@ class Saldiri:
             
             # Dinamik Servo Tetikleme (yuk_1, yuk_2 vb.)
             self.vehicle.set_servo(channel=self.aktif_servo_channel, pwm=self.aktif_servo_acik, drone_id=self.drone_id)
+            time.sleep(2)
+            self.vehicle.set_servo(channel=self.aktif_servo_channel, pwm=self.aktif_servo_kapali, drone_id=self.drone_id)
+
             self.aktif_servo_channel = self.yuk2_channel
             self.aktif_servo_acik = self.yuk2_acik
             self.aktif_servo_kapali = self.yuk2_kapali
             print(f"[SALDIRI]>> {self.aktif_hedef} için yuk bırakıldı! 5 saniye bekleniyor...")
-            time.sleep(5)
+            time.sleep(3)
             return True
         return False
 
