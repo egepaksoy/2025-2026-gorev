@@ -1,4 +1,3 @@
-# Goruntu isleme kutuphanesi
 import socket, struct
 import time
 import threading
@@ -9,11 +8,18 @@ import datetime
 import os
 
 class Handler:
-    def __init__(self, stop_event: threading.Event=None, window_name: str="Goruntu", middle_range: int=0.4, record_frame: bool=False):
+    # 1. DEĞİŞİKLİK: __init__ içine 'show_crosshair' parametresi eklendi
+    def __init__(self, stop_event: threading.Event=None, window_name: str="Goruntu", middle_range: int=0.4, record_frame: bool=False, show_crosshair: bool=False):
         self.model = None
         self.proccessing = False
 
         self.record_frame = record_frame
+        
+        # Artı işareti (crosshair) ayarları
+        self.show_crosshair = show_crosshair
+        self.crosshair_color = (0, 0, 255) # BGR formatında Kırmızı renk
+        self.crosshair_size = 20 # Çizgi uzunluğu
+        self.crosshair_thickness = 2 # Çizgi kalınlığı
 
         if self.record_frame:
             os.makedirs("./outputs", exist_ok=True)
@@ -63,6 +69,24 @@ class Handler:
         self.output_frame = None
         self.output_lock = threading.Lock()
     
+    # 2. DEĞİŞİKLİK: Artı işaretini açıp kapatmak için fonksiyon
+    def toggle_crosshair(self, state: bool = None):
+        """Artı işaretinin görünürlüğünü değiştirir."""
+        if state is None:
+            self.show_crosshair = not self.show_crosshair
+        else:
+            self.show_crosshair = state
+            
+    # 3. DEĞİŞİKLİK: Artı işaretini çizmek için fonksiyon
+    def draw_crosshair(self, frame):
+        """Ekranın tam ortasına artı işareti çizer."""
+        if self.show_crosshair and self.screen_center is not None:
+            cx, cy = int(self.screen_center[0]), int(self.screen_center[1])
+            # Yatay çizgi
+            cv2.line(frame, (cx - self.crosshair_size, cy), (cx + self.crosshair_size, cy), self.crosshair_color, self.crosshair_thickness)
+            # Dikey çizgi
+            cv2.line(frame, (cx, cy - self.crosshair_size), (cx, cy + self.crosshair_size), self.crosshair_color, self.crosshair_thickness)
+
     def get_detected_obj(self):
         """Algılanan objeleri dict olarak dondurur
         
@@ -143,6 +167,9 @@ class Handler:
                                 self.detected_obj["screen_res"] = self.screen_res
                     # self.visualize_box(frame)
                     
+                    # 4. DEĞİŞİKLİK: Çıktı verilmeden önce artı işaretini ekle
+                    self.draw_crosshair(frame)
+
                     with self.output_lock:
                         ret, buffer = cv2.imencode('.jpg', frame)
                         if ret:
@@ -276,6 +303,9 @@ class Handler:
                             self.detected_obj["dist"] = self.get_distance(obj_center)
                             self.detected_obj["lt"] = time.time()
                             self.detected_obj["screen_res"] = self.screen_res
+
+                # 4. DEĞİŞİKLİK: Çıktı verilmeden önce artı işaretini ekle
+                self.draw_crosshair(frame)
 
                 with self.output_lock:
                     ret, buffer = cv2.imencode('.jpg', frame)
