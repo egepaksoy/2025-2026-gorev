@@ -291,7 +291,7 @@ export default function App() {
           <div className={cn("flex-grow border rounded-xl overflow-hidden relative min-h-[300px]", themeBorderClass)}>
             <MapContainer 
               center={userLocation} 
-              zoom={16} 
+              zoom={18} 
               style={{ height: '100%', width: '100%' }} 
               zoomControl={false}
             >

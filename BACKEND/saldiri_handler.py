@@ -175,6 +175,8 @@ class Saldiri:
 
         self.client.send_data(f"{self.gimbal_pos[0]}|{self.gimbal_pos[1]}")
         
+        #! Burası degisti
+        #for y in range(self.gimbal_pos_min[0], self.gimbal_pos_max[0], step):
         for y in range(self.gimbal_pos_max[0], self.gimbal_pos_min[0] - 1, -step):
             if self._hedef_algilandi_mi(): break
             self.gimbal_pos = (y, self.gimbal_pos[1])
@@ -222,12 +224,16 @@ class Saldiri:
                 # 2. Drone Yaw Ayarı (Gimbal merkeze hizalı değilse)
                 yaw_farki = 90 - self.gimbal_pos[1]
                 if abs(yaw_farki) > 10:
+                    #! Yaw almadan once kameraya hedefi sabitleme beklemesi
                     print("Yaw alma")
+                    start_time = time.time()
+                    while not self.stop_event.is_set() and time.time() - start_time >= 2:
+                        time.sleep(0.05)
                     old_yaw = self.vehicle.get_yaw(drone_id=self.drone_id)
                     print("old_yaw: ", old_yaw)
                     yaw_acisi = yaw_farki * -1
                     print("yaw_farki: ", yaw_acisi)
-                    self.vehicle.set_yaw(turn_angle=yaw_acisi, drone_id=self.drone_id)
+                    self.vehicle.set_yaw(turn_angle=yaw_acisi, drone_id=self.drone_id, default_speed=14)
                     while not self.stop_event.is_set() and abs(self.vehicle.get_yaw(drone_id=self.drone_id) - (old_yaw + yaw_acisi) % 360) > 9:
                         if (self.gimbal_pos[0] <= self.gimbal_deadzone) and (self._hedef_algilandi_mi() and self.target_locked):
                             print(f"[SALDIRI]>> {self.aktif_hedef} tam üzerinde! Konum kaydediliyor.")
