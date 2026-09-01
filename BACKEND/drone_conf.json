@@ -1,5 +1,5 @@
 {
-    "address": "com9",
+    "address": "udp:172.22.160.1:14550",
     "saldiri":
     {
         "id": 1,

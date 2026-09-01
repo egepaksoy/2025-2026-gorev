@@ -127,6 +127,8 @@ except Exception as e:
 except KeyboardInterrupt:
     failsafe(vehicle=vehicle)
     print("CTRL+C ile cikildi")
+    if not stop_event.is_set():
+        stop_event.set()
 finally:
     if not stop_event.is_set():
         stop_event.set()

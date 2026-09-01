@@ -161,3 +161,5 @@ class Gozlemci:
             print(f"[GOZLEMCI]>> Uçuş sırasında hata meydana geldi: {e}")
         except KeyboardInterrupt:
             print("[GOZLEMCI]>> Kullanıcı tarafından uçuş durduruldu (CTRL+C).")
+            if not self.stop_event.is_set():
+                self.stop_event.set()

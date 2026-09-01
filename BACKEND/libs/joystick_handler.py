@@ -105,7 +105,7 @@ class Joystick_Handler:
         try:
             print("[TEST]>> Joystick verisi bekleniyor...")
             start_time = time.time()
-            while self.get_value() is None:
+            while self.get_value() is None and not self.stop_event.is_set():
                 time.sleep(0.05)
                 if time.time() - start_time > 5:
                     raise TimeoutError("5 saniye boyunca geçerli veri alınamadı.")

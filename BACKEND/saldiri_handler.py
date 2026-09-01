@@ -340,3 +340,5 @@ class Saldiri:
         """Tüm threadleri kapatır ve failsafe uygular."""
         self.gimbal_running = False
         self.scan_on = False
+        if not self.stop_event.is_set():
+            self.stop_event.set()
