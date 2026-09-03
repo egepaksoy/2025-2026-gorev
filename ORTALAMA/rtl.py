@@ -4,11 +4,8 @@ import time
 
 
 stop_event = threading.Event()
-vehicle = Vehicle(address="udp:172.22.160.1:14550", stop_event=stop_event)
+vehicle = Vehicle(address="com9", stop_event=stop_event)
 
-while True:
-    i = input("Failsafe icin f yazin cikmak icin x: ")
-    if i == "f":
-        failsafe(vehicle=vehicle)
-    if i == "x":
-        exit()
+for d_id in vehicle.get_all_drone_ids():
+    vehicle.set_mode(mode="LAND", drone_id=d_id)
+    time.sleep(1)
