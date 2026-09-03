@@ -9,13 +9,14 @@ with open(CONFIG_FILE, "r") as f:
     conf = json.load(f)
 
 stop_event = threading.Event()
-vehicle = Vehicle(address="udp:172.22.160.1:14550")
+vehicle = Vehicle(address="com9")
 saldiri = Saldiri(vehicle=vehicle, drone_conf=conf["saldiri"], stop_event=stop_event)
 
-hedefler = {"red": (-35.36318322, 149.16513032), "blue": (-35.36318322, 149.16513032)}
+hedefler = {"red": (40.7119934, 30.0245808)}
 
 try:
     saldiri.baglantilari_kur()
+    input("Entera basin")
     saldiri.gorevi_baslat(hedef_siniflari=hedefler)
 
 except KeyboardInterrupt:

@@ -120,7 +120,7 @@ class Saldiri:
         last_command_time = 0
         # Buradaki sure cok kisilirsa algilamadan hareket ederek kendini bozuyor
         #TODO: buradaki sure ayarlamasi kritik
-        command_interval = 0.85
+        command_interval = 0.6
         
         while not self.stop_event.is_set() and self.gimbal_running:
             if not self.scan_on or self.aktif_hedef is None:
@@ -141,6 +141,10 @@ class Saldiri:
                     
                     move_x = dx if abs(dx) > self.camera_deadzone else 0
                     move_y = dy if abs(dy) > self.camera_deadzone else 0
+
+                    # TODO: burası eklendi. az dondurmesi icin
+                    move_x *= 0.8
+                    move_y *= 0.8
                     
                     self.gimbal_pos = gimbal_new_angles(self.gimbal_pos, (move_y, move_x), 
                                                         self.gimbal_pos_min, self.gimbal_pos_max)
@@ -166,7 +170,7 @@ class Saldiri:
                         
                     elif not self._hedef_algilandi_mi() and drone_turned != 0:
                         print(f"[SALDIRI]>> {self.aktif_hedef} bulunamadı.")
-                        self.gimbal_running = False 
+                        self.gimbal_running = False
 
             time.sleep(0.05)
 
@@ -227,25 +231,27 @@ class Saldiri:
                 # 2. Drone Yaw Ayarı (Gimbal merkeze hizalı değilse)
                 yaw_farki = 90 - self.gimbal_pos[1]
                 if abs(yaw_farki) > 10:
+                    print("Yaw almadan once 2 sn gimbalin konumlandirmasi bekleniyor")
                     #! Yaw almadan once kameraya hedefi sabitleme beklemesi
-                    print("Yaw alma")
                     start_time = time.time()
-                    while not self.stop_event.is_set() and time.time() - start_time >= 2:
+                    while not self.stop_event.is_set() and time.time() - start_time <= 2:
                         time.sleep(0.05)
+
                     old_yaw = self.vehicle.get_yaw(drone_id=self.drone_id)
                     print("old_yaw: ", old_yaw)
+
                     yaw_acisi = yaw_farki * -1
                     print("yaw_farki: ", yaw_acisi)
+
                     self.vehicle.set_yaw(turn_angle=yaw_acisi, drone_id=self.drone_id, default_speed=14)
                     while not self.stop_event.is_set() and abs(self.vehicle.get_yaw(drone_id=self.drone_id) - (old_yaw + yaw_acisi) % 360) > 9:
                         time.sleep(0.05)
 
-                    if (self.gimbal_pos[0] <= self.gimbal_deadzone) and (self._hedef_algilandi_mi() and self.target_locked):
-                        print(f"[SALDIRI]>> {self.aktif_hedef} tam üzerinde! Konum kaydediliyor.")
-                        obj_pos = self.vehicle.get_pos(drone_id=self.drone_id)
-                        hedef_algilandi = True
-                        break
-            
+                    print("Yaw aldiktan sonra 1 sn bekleniyor")
+                    start_time = time.time()
+                    while not self.stop_event.is_set() and time.time() - start_time <= 1:
+                        time.sleep(0.05)
+
                 if (self.gimbal_pos[0] <= self.gimbal_deadzone) and (self._hedef_algilandi_mi() and self.target_locked):
                     print(f"[SALDIRI]>> {self.aktif_hedef} tam üzerinde! Konum kaydediliyor.")
                     obj_pos = self.vehicle.get_pos(drone_id=self.drone_id)
@@ -276,8 +282,12 @@ class Saldiri:
             
             # Dinamik Servo Tetikleme (yuk_1, yuk_2 vb.)
             self.vehicle.set_servo(channel=self.aktif_servo_channel, pwm=self.aktif_servo_acik, drone_id=self.drone_id)
-            time.sleep(2)
+            time.sleep(1)
             self.vehicle.set_servo(channel=self.aktif_servo_channel, pwm=self.aktif_servo_kapali, drone_id=self.drone_id)
+            time.sleep(1)
+            self.vehicle.set_servo(channel=self.yuk2_channel, pwm=self.yuk2_acik, drone_id=self.drone_id)
+            time.sleep(1)
+            self.vehicle.set_servo(channel=self.yuk2_channel, pwm=self.yuk2_kapali, drone_id=self.drone_id)
 
             self.aktif_servo_channel = self.yuk2_channel
             self.aktif_servo_acik = self.yuk2_acik
@@ -309,7 +319,12 @@ class Saldiri:
             self.vehicle.go_to(loc=hedef_konumu, alt=self.alt, drone_id=self.drone_id)
             while not self.stop_event.is_set() and not self.vehicle.on_location(loc=hedef_konumu, drone_id=self.drone_id):
                 time.sleep(0.5)
-            
+
+            # Hedefe varınca 2 sn bekleme
+            start_time = time.time()
+            while not self.stop_event.is_set() and time.time() - start_time <= 2:
+                time.sleep(0.05)
+
             self.gimbal_running = True # Aramayı her yeni hedefte başlat
             
             print(f"[SALDIRI]>> Hedef {self.aktif_hedef} konumuna geldi tarama baslatiliyor")
