@@ -91,6 +91,23 @@ class Gozlemci:
                 break
             time.sleep(0.1)
 
+        while not self.stop_event.is_set():
+            try:
+                inp = input("Yaw acisi girin (relative): ")
+
+                if "q" in inp:
+                    break
+                else:
+                    inp = float(inp)
+                    print("girilen yaw: ", inp)
+
+                    self.vehicle.set_yaw(turn_angle=inp, default_speed=30, relative=True, drone_id=self.drone_id)
+                    print(f"Yaw {inp} acisina dondu")
+
+            except Exception as e:
+                print(e)
+                continue
+
         print(f"[GOZLEMCI]>> Kalkis tamamlandı. Arama başlatılabilir.")
 
     #!-------EKLENENLER---------
@@ -148,21 +165,12 @@ class Gozlemci:
 
     def gorevi_baslat(self):
         """Gozlemci dronun yapacagi ucus gorevi"""
-        try:
-            self.kalkis()
-            
-            # Lidar ile hedefi bekle ve hesapla
-            self._hedef_koordinat_hesapla()
-            
-            self.vehicle.set_mode(mode="LAND", drone_id=self.drone_id)
-            #self.vehicle.go_home(alt=self.alt, drone_id=self.drone_id)
+        self.kalkis()
+        
+        # Lidar ile hedefi bekle ve hesapla
+        self._hedef_koordinat_hesapla()
+        
+        self.vehicle.set_mode(mode="LAND", drone_id=self.drone_id)
+        #self.vehicle.go_home(alt=self.alt, drone_id=self.drone_id)
 
-            print("[GOZLEMCI]>> Gorevini tamamladi ve guvenli sekilde inis yaptı")
-                    
-        except Exception as e:
-            print(f"[GOZLEMCI]>> Uçuş sırasında hata meydana geldi: {e}")
-        except KeyboardInterrupt:
-            print("[GOZLEMCI]>> Kullanıcı tarafından uçuş durduruldu (CTRL+C).")
-
-            if not self.stop_event.is_set():
-                self.stop_event.set()
+        print("[GOZLEMCI]>> Gorevini tamamladi ve guvenli sekilde inis yaptı")

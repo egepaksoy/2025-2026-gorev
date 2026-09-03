@@ -63,7 +63,9 @@ class Saldiri:
         
         # 1. Görüntü işleme
         self.image_handler = Image_Handler(stop_event=self.stop_event, window_name="Saldiri")
-        self.image_handler.showing_image = False
+        # self.image_handler.showing_image = False
+        # TODO: Burayı kaldır
+        self.image_handler.showing_image = True
         self.image_handler.ters = True
         if self.model_path is not None:
             self.image_handler.start_proccessing(model_path=self.model_path, conf=self.conf)
@@ -117,7 +119,8 @@ class Saldiri:
         drone_turned = 0
         last_command_time = 0
         # Buradaki sure cok kisilirsa algilamadan hareket ederek kendini bozuyor
-        command_interval = 0.5
+        #TODO: buradaki sure ayarlamasi kritik
+        command_interval = 0.85
         
         while not self.stop_event.is_set() and self.gimbal_running:
             if not self.scan_on or self.aktif_hedef is None:
@@ -197,7 +200,7 @@ class Saldiri:
                 while time.time() - start_time <= 1:
                     if self._hedef_algilandi_mi(): return
                     if self.stop_event.is_set(): return
-                    time.sleep(0.1)
+                    time.sleep(0.05)
 
     def _hedefe_ilerle_ve_vur(self):
         """Aktif hedefe kilitlenip ilerler ve konumu bulunca yük bırakır."""
@@ -235,21 +238,13 @@ class Saldiri:
                     print("yaw_farki: ", yaw_acisi)
                     self.vehicle.set_yaw(turn_angle=yaw_acisi, drone_id=self.drone_id, default_speed=14)
                     while not self.stop_event.is_set() and abs(self.vehicle.get_yaw(drone_id=self.drone_id) - (old_yaw + yaw_acisi) % 360) > 9:
-                        if (self.gimbal_pos[0] <= self.gimbal_deadzone) and (self._hedef_algilandi_mi() and self.target_locked):
-                            print(f"[SALDIRI]>> {self.aktif_hedef} tam üzerinde! Konum kaydediliyor.")
-                            obj_pos = self.vehicle.get_pos(drone_id=self.drone_id)
-                            hedef_algilandi = True
-                            break
                         time.sleep(0.05)
-                    #! Burası eklendi eskiden time sleep vardı
-                    start_time = time.time()
-                    while not self.stop_event.is_set() and time.time() - start_time >= 0.8:
-                        if (self.gimbal_pos[0] <= self.gimbal_deadzone) and (self._hedef_algilandi_mi() and self.target_locked):
-                            print(f"[SALDIRI]>> {self.aktif_hedef} tam üzerinde! Konum kaydediliyor.")
-                            obj_pos = self.vehicle.get_pos(drone_id=self.drone_id)
-                            hedef_algilandi = True
-                            break
-                        time.sleep(0.05)
+
+                    if (self.gimbal_pos[0] <= self.gimbal_deadzone) and (self._hedef_algilandi_mi() and self.target_locked):
+                        print(f"[SALDIRI]>> {self.aktif_hedef} tam üzerinde! Konum kaydediliyor.")
+                        obj_pos = self.vehicle.get_pos(drone_id=self.drone_id)
+                        hedef_algilandi = True
+                        break
             
                 if (self.gimbal_pos[0] <= self.gimbal_deadzone) and (self._hedef_algilandi_mi() and self.target_locked):
                     print(f"[SALDIRI]>> {self.aktif_hedef} tam üzerinde! Konum kaydediliyor.")
@@ -267,7 +262,7 @@ class Saldiri:
             if not self.gimbal_running:
                 print(f"[SALDIRI]>> {self.aktif_hedef} takibi iptal oldu.")
                 break
-            
+
             time.sleep(0.05)
 
         # Hedefe varıldıysa Yük Bırakma
@@ -295,50 +290,40 @@ class Saldiri:
     def gorevi_baslat(self, hedef_siniflari: dict):
         """Çoklu otonom hedef senaryosunu sırayla işleten ana metod."""
         self.hedef_siniflari = hedef_siniflari
-        try:
-            self.kalkis()
-            time.sleep(2) 
+        if not self.hedef_siniflari or len(self.hedef_siniflari) == 0:
+            print("[SALDIRI]>> Hedef sınıfı tanımlanmamış, görev iptal.")
+            return
 
-            if not self.hedef_siniflari or len(self.hedef_siniflari) == 0:
-                print("[SALDIRI]>> Hedef sınıfı tanımlanmamış, görev iptal.")
-                return
+        self.kalkis()
+        time.sleep(2) 
 
-            # Tüm hedefleri sırayla gez
-            for hedef in self.hedef_siniflari:
-                if self.stop_event.is_set(): break
-                
-                self.aktif_hedef = hedef
+        # Tüm hedefleri sırayla gez
+        for hedef in self.hedef_siniflari:
+            if self.stop_event.is_set(): break
+            
+            self.aktif_hedef = hedef
 
-                hedef_konumu = self.hedef_siniflari[self.aktif_hedef]
+            hedef_konumu = self.hedef_siniflari[self.aktif_hedef]
 
-                print(f"[SALDIRI]>> Hedef {self.aktif_hedef} konumuna gidiliyor")
-                self.vehicle.go_to(loc=hedef_konumu, alt=self.alt, drone_id=self.drone_id)
-                while not self.stop_event.is_set() and not self.vehicle.on_location(loc=hedef_konumu, drone_id=self.drone_id):
-                    time.sleep(0.5)
-                
-                self.gimbal_running = True # Aramayı her yeni hedefte başlat
-                
-                print(f"[SALDIRI]>> Hedef {self.aktif_hedef} konumuna geldi tarama baslatiliyor")
-                basarili = self._hedefe_ilerle_ve_vur()
-                
-                if not basarili:
-                    print(f"[SALDIRI]>> {hedef} vurulamadı, bir sonraki hedefe geçiliyor.")
-                
-            # Tüm hedefler bitince eve dön
-            print("[SALDIRI]>> Tüm hedef operasyonları tamamlandı. Görev sonu, dönüşe geçiliyor.")
-            self.gimbal_running = False
-            self.vehicle.go_home(alt=self.alt, drone_id=self.drone_id)
-
-        except KeyboardInterrupt:
-            print("[SALDIRI]>> \nKullanıcı tarafından uçuş durduruldu!")
-            self.kapat()
-        except Exception as e:
-            print(f"[SALDIRI]>> Görev sırasında hata: {e}")
-            self.kapat()
+            print(f"[SALDIRI]>> Hedef {self.aktif_hedef} konumuna gidiliyor")
+            self.vehicle.go_to(loc=hedef_konumu, alt=self.alt, drone_id=self.drone_id)
+            while not self.stop_event.is_set() and not self.vehicle.on_location(loc=hedef_konumu, drone_id=self.drone_id):
+                time.sleep(0.5)
+            
+            self.gimbal_running = True # Aramayı her yeni hedefte başlat
+            
+            print(f"[SALDIRI]>> Hedef {self.aktif_hedef} konumuna geldi tarama baslatiliyor")
+            basarili = self._hedefe_ilerle_ve_vur()
+            
+            if not basarili:
+                print(f"[SALDIRI]>> {hedef} vurulamadı, bir sonraki hedefe geçiliyor.")
+            
+        # Tüm hedefler bitince eve dön
+        print("[SALDIRI]>> Tüm hedef operasyonları tamamlandı. Görev sonu, dönüşe geçiliyor.")
+        self.gimbal_running = False
+        self.vehicle.go_home(alt=self.alt, drone_id=self.drone_id)
 
     def kapat(self):
         """Tüm threadleri kapatır ve failsafe uygular."""
         self.gimbal_running = False
         self.scan_on = False
-        if not self.stop_event.is_set():
-            self.stop_event.set()

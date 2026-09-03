@@ -516,28 +516,34 @@ def calc_pos(loc, distance, bearing):
 
 def failsafe(vehicle: Vehicle):
     def failsafe_drone_id(vehicle: Vehicle, drone_id: int):
-        if not vehicle.is_armed(drone_id=drone_id):
-            print(f"{drone_id} id'li drone disarm konumunda")
-            return
         home_pos = vehicle.get_home_pos(drone_id)
 
         if home_pos is not None:
+            rtl = False
             print(f"{drone_id}>> Kalkis konumuna donuyor")
             vehicle.set_mode(mode="GUIDED", drone_id=drone_id)
             time.sleep(1)
             vehicle.go_to(loc=home_pos, drone_id=drone_id)
 
             start_time = time.time()
+            timer = time.time()
             while not vehicle.on_location(loc=home_pos, drone_id=drone_id):
                 if time.time() - start_time >= 2:
                     print(f"Kalkis konumuna kalan mesafe: {calc_distance(home_pos, vehicle.get_pos(drone_id=drone_id))} metre")
                     print(vehicle.get_pos(drone_id=drone_id))
                     print(f"stop_event: {vehicle.stop_event.is_set()}")
                     start_time = time.time()
+
+                if time.time() - timer >= 15:
+                    print("Kalkis konumuna guided ile donemedi RTL aliniyor")
+                    vehicle.set_mode(mode="RTL")
+                    rtl = True
+                    break
                 time.sleep(0.5)
-            
-            print(f"{drone_id}>> LAND aliyor")
-            vehicle.set_mode(mode="LAND", drone_id=drone_id)
+
+            if not rtl:
+                print(f"{drone_id}>> LAND aliyor")
+                vehicle.set_mode(mode="LAND", drone_id=drone_id)
             time.sleep(1)
         
         else:
