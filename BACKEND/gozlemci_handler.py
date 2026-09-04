@@ -91,23 +91,6 @@ class Gozlemci:
                 break
             time.sleep(0.1)
 
-        while not self.stop_event.is_set():
-            try:
-                inp = input("Yaw acisi girin (relative): ")
-
-                if "q" in inp:
-                    break
-                else:
-                    inp = float(inp)
-                    print("girilen yaw: ", inp)
-
-                    self.vehicle.set_yaw(turn_angle=inp, default_speed=30, relative=True, drone_id=self.drone_id)
-                    print(f"Yaw {inp} acisina dondu")
-
-            except Exception as e:
-                print(e)
-                continue
-
         print(f"[GOZLEMCI]>> Kalkis tamamlandı. Arama başlatılabilir.")
 
     #!-------EKLENENLER---------
