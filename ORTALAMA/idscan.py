@@ -1,13 +1,15 @@
 import time
 import sys
 from pymavlink_custom.pymavlink_custom import Vehicle
+import threading
 
-vehicle = Vehicle(address="com9")
+stop_event = threading.Event()
+vehicle = Vehicle(address="com9", stop_event=stop_event)
 
 start_time = time.time()
 
 try:
-    while True:
+    while not stop_event.is_set():
         if time.time() - start_time >= 2:
             for i in vehicle.get_all_drone_ids():
                 print(f"{i}: {vehicle.get_mode(drone_id=i)}")
@@ -22,4 +24,6 @@ except Exception as e:
     print(e)
 
 finally:
+    if not stop_event.is_set():
+        stop_event.set()
     vehicle.vehicle.close()
