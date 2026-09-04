@@ -12,9 +12,8 @@ stop_event = threading.Event()
 vehicle = Vehicle(address="com9")
 saldiri = Saldiri(vehicle=vehicle, drone_conf=conf["saldiri"], stop_event=stop_event)
 
-hedefler = {"red": (40.7119934, 30.0245808)}
-
-try:
+hedefler = {'blue': [40.712089529598806, 30.024572720468452], 'red': [40.712124124236674, 30.0244553143392]}
+try:    
     saldiri.baglantilari_kur()
     input("Entera basin")
     saldiri.gorevi_baslat(hedef_siniflari=hedefler)

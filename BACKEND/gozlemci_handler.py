@@ -157,3 +157,10 @@ class Gozlemci:
         #self.vehicle.go_home(alt=self.alt, drone_id=self.drone_id)
 
         print("[GOZLEMCI]>> Gorevini tamamladi ve guvenli sekilde inis yaptı")
+        time.sleep(1)
+        mode = self.vehicle.get_mode(drone_id=self.drone_id)
+        print(f"{self.drone_id} drone modu: {mode}")
+        if mode != "LAND":
+            self.vehicle.set_mode(mode="LAND", drone_id=self.drone_id)
+            time.sleep(1)
+            print(f"{self.drone_id} drone modu: {self.vehicle.get_mode(drone_id=self.drone_id)}")

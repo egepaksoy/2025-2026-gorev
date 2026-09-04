@@ -6,8 +6,6 @@ from libs.tcp_client import TCPClient
 from libs.image_proccesser import Handler as Image_Handler
 from pymavlink_custom.pymavlink_custom import Vehicle
 
-#? Test edilcek
-
 class Saldiri:
     def __init__(self, vehicle: Vehicle, drone_conf: dict, hedef_siniflari: dict=None, model_path: str=None, stop_event: threading.Event=threading.Event()):
         self.drone_conf = drone_conf
@@ -56,6 +54,9 @@ class Saldiri:
         self.image_handler = None
         self.client = None
         self.gimbal_thread = None
+
+        # yaw dondurme
+        self.yaw_turning = False
 
     def baglantilari_kur(self):
         """Drone, Gimbal ve Kamera bağlantılarını başlatır."""
@@ -145,11 +146,35 @@ class Saldiri:
                     # TODO: burası eklendi. az dondurmesi icin
                     move_x *= 1
                     move_y *= 1
-                    
+
+                    old_pos = self.gimbal_pos
                     self.gimbal_pos = gimbal_new_angles(self.gimbal_pos, (move_y, move_x), 
                                                         self.gimbal_pos_min, self.gimbal_pos_max)
-                    
+
+                    if self.gimbal_pos[0] > self.gimbal_pos_max[0] or self.gimbal_pos[0] < self.gimbal_pos_min[0]:
+                        self.gimbal_pos[0] = old_pos[0]
+                        
+                    if self.gimbal_pos[1] > self.gimbal_pos_max[1] or self.gimbal_pos[1] < self.gimbal_pos_min[1]:
+                        self.gimbal_pos[1] = old_pos[1]
+                        self.yaw_turning = True
+
                     self.client.send_data(f"{self.gimbal_pos[0]}|{self.gimbal_pos[1]}")
+                    if self.yaw_turning:
+                        angle = 90 - self.gimbal_pos[1]
+                        if angle > 0:
+                            angle = 30
+                        else:
+                            angle = -30
+
+                        print(f"kamera kenarında kaldi drone {angle} derece donuyor")                                                    
+                        self.vehicle.set_yaw(turn_angle=angle, default_speed=14, drone_id=self.drone_id)
+
+                        start_time = time.time()
+                        while not self.stop_event.is_set() and time.time() - start_time < 2:
+                            time.sleep(0.05)
+
+                        self.yaw_turning = False
+
                     last_command_time = time.time()
             else:
                 self.target_locked = False
@@ -158,8 +183,8 @@ class Saldiri:
 
                 if (current_time - lt >= 2.0):
                     # TODO: burası eklendi. bu asagidan yukarıya dogru tarıyor
-                    # self._gimbal_tara()
-                    self._gimbal_tara_ters()
+                    self._gimbal_tara()
+                    # self._gimbal_tara_ters()
                     
                     if not self._hedef_algilandi_mi() and drone_turned == 0:
                         old_yaw = self.vehicle.get_yaw(drone_id=self.drone_id)
@@ -293,7 +318,8 @@ class Saldiri:
                     yaw_acisi = yaw_farki * -1
                     print("yaw_farki: ", yaw_acisi)
 
-                    self.vehicle.set_yaw(turn_angle=yaw_acisi, drone_id=self.drone_id, default_speed=14)
+                    if not self.yaw_turning:
+                        self.vehicle.set_yaw(turn_angle=yaw_acisi, drone_id=self.drone_id, default_speed=14)
 
                     #TODO: abs kısmında % 360 yaparken parantez onemli
                     # while not self.stop_event.is_set() and abs((self.vehicle.get_yaw(drone_id=self.drone_id) - (old_yaw + yaw_acisi)) % 360) > 9:
@@ -399,7 +425,7 @@ class Saldiri:
             takeoff_pos = self.vehicle.get_home_pos(drone_id=self.drone_id)
             self.vehicle.go_to(loc=takeoff_pos, alt=self.alt, drone_id=self.drone_id)
 
-            while not self.stop_event.is_set() and self.vehicle.on_location(loc=takeoff_pos, drone_id=self.drone_id):
+            while not self.stop_event.is_set() and not self.vehicle.on_location(loc=takeoff_pos, drone_id=self.drone_id):
                 time.sleep(0.5)
 
             print(f"{self.drone_id} idli saldiri dronu kalkis konumuna dondu LAND alıyor")

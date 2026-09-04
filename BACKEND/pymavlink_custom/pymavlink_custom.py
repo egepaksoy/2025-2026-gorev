@@ -361,13 +361,7 @@ class Vehicle:
             lat, lon = loc[0], loc[1]
 
             if alt == None:
-                try:
-                    alt = self.get_pos(drone_id=drone_id)[2]
-                    if alt <= 1 or alt >= 20:
-                        print(f"{drone_id}>> Yukseklik verisi cekmede sorun cikti, yukseklik 5mt yapildi.")
-                        alt = 5
-                except:
-                    alt = 5
+                alt = 6
 
             self.vehicle.mav.send(mavutil.mavlink.MAVLink_set_position_target_global_int_message(
                 0, drone_id, self.vehicle.target_component,
