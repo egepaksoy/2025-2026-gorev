@@ -7,7 +7,7 @@
         "rasp-ip": "192.168.0.103",
         "udp-port": 9999,
         "tcp-port": 5005,
-        "move-speed": 0.5,
+        "move-speed": 0.32,
         "conf": 0.8,
         "model-path": "./models/model.pt",
         "yuk1": {"channel": 13, "kapali": 1500, "acik": 1000},
