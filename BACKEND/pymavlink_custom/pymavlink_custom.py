@@ -50,16 +50,17 @@ class Vehicle:
                 self._listener_thread = threading.Thread(target=self._message_listener_loop, daemon=True)
                 self._listener_thread.start() # Dinleme işlemini başlat
 
+                print("[Vehicle]>> Uçuş öncesi veriler çekilmesi için 5sn bekleniyor")
+                start_time = time.time()            
+                while time.time() - start_time <= 5:
+                    time.sleep(0.2)
+
                 # Varsayılan Drone id
                 self.drone_id = list(self.get_all_drone_ids())[0] if len(self.get_all_drone_ids()) else 0
 
                 # Waypoint (Görev) Yükleyicisi
                 self.wp = mavwp.MAVWPLoader()
 
-            print("[Vehicle]>> Uçuş öncesi veriler çekilmesi için 5sn bekleniyor")
-            start_time = time.time()            
-            while time.time() - start_time <= 5:
-                time.sleep(0.2)
 
         except Exception as e:
             print(f"[Vehicle] Kritik Hata (init): {e}")
@@ -357,17 +358,15 @@ class Vehicle:
             drone_id = self.drone_id
 
         try:
-            if len(loc) < 2:
-                print("2den az")
-                Exception(f"Geçersiz konum: {loc}")
-                return
-
             lat, lon = loc[0], loc[1]
 
             if alt == None:
-                alt = self.get_pos(drone_id=drone_id)[2]
-                if alt <= 1 or alt >= 20:
-                    print(f"{drone_id}>> Yukseklik verisi cekmede sorun cikti, yukseklik 5mt yapildi.")
+                try:
+                    alt = self.get_pos(drone_id=drone_id)[2]
+                    if alt <= 1 or alt >= 20:
+                        print(f"{drone_id}>> Yukseklik verisi cekmede sorun cikti, yukseklik 5mt yapildi.")
+                        alt = 5
+                except:
                     alt = 5
 
             self.vehicle.mav.send(mavutil.mavlink.MAVLink_set_position_target_global_int_message(
@@ -419,6 +418,7 @@ class Vehicle:
             return (dist <= sapma) and (seq == self.get_miss_wp(drone_id) if seq else True)
         except Exception as e:
             print(e)
+            return False
 
     def set_yaw(self, turn_angle, default_speed: int=30, relative: bool=True, drone_id: int=None):
         if drone_id is None:
@@ -523,19 +523,20 @@ def failsafe(vehicle: Vehicle):
             print(f"{drone_id}>> Kalkis konumuna donuyor")
             vehicle.set_mode(mode="GUIDED", drone_id=drone_id)
             time.sleep(1)
-            vehicle.go_to(loc=home_pos, drone_id=drone_id)
+            vehicle.go_to(loc=home_pos, alt=6, drone_id=drone_id)
+            time.sleep(1)
 
             start_time = time.time()
             timer = time.time()
             while not vehicle.on_location(loc=home_pos, drone_id=drone_id):
                 if time.time() - start_time >= 2:
-                    print(f"Kalkis konumuna kalan mesafe: {calc_distance(home_pos, vehicle.get_pos(drone_id=drone_id))} metre")
+                    print(f"{drone_id}>> Kalkis konumuna kalan mesafe: {calc_distance(home_pos, vehicle.get_pos(drone_id=drone_id))} metre")
                     print(vehicle.get_pos(drone_id=drone_id))
                     print(f"stop_event: {vehicle.stop_event.is_set()}")
                     start_time = time.time()
 
                 if time.time() - timer >= 15:
-                    print("Kalkis konumuna guided ile donemedi RTL aliniyor")
+                    print(f"{drone_id}>> Kalkis konumuna guided ile donemedi RTL aliniyor")
                     vehicle.set_mode(mode="RTL")
                     rtl = True
                     break
@@ -550,6 +551,10 @@ def failsafe(vehicle: Vehicle):
             print(f"{drone_id}>> RTL alıyor")
             vehicle.set_mode(mode="RTL", drone_id=drone_id)
             time.sleep(1)
+        
+        # print(f"{drone_id}>> RTL alıyor")
+        # vehicle.set_mode(mode="RTL", drone_id=drone_id)
+        # time.sleep(1)
 
 
     print("Dronelar failsafe alıyor")
