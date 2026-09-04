@@ -420,16 +420,15 @@ def start_mission(background_tasks: BackgroundTasks, drone_id: Optional[int] = N
 
     def handle_mission():
         # TODO: burası kaldirilcak
-        # gozlemci.gorevi_baslat()
+        gozlemci.gorevi_baslat()
 
-        # hedefler = gozlemci.hedefler
+        hedefler = gozlemci.hedefler
         #! hedefler manuel getirildi
-        hedefler = {"red": (40.7119709, 30.0245265), "blue": (40.7120071, 30.0245372)}
+        # hedefler = {"red": (40.7119709, 30.0245265), "blue": (40.7120071, 30.0245372)}
 
         print(f"Isaretlenen hedefler: {hedefler}")
 
         saldiri.gorevi_baslat(hedef_siniflari=hedefler)
-        
         
     background_tasks.add_task(handle_mission, )
     return CommandResponse(status="success", message=f"Mission initiated")
