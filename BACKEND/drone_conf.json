@@ -8,7 +8,7 @@
         "udp-port": 9999,
         "tcp-port": 5005,
         "move-speed": 0.32,
-        "conf": 0.8,
+        "conf": 0.7,
         "model-path": "./models/model.pt",
         "yuk1": {"channel": 13, "kapali": 1500, "acik": 1000},
         "yuk2": {"channel": 14, "kapali": 1000, "acik": 1600}
