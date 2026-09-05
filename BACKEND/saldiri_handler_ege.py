@@ -6,6 +6,7 @@ from libs.tcp_client import TCPClient
 from libs.image_proccesser import Handler as Image_Handler
 from pymavlink_custom.pymavlink_custom import Vehicle, calc_pos
 import math
+import numpy as np
 
 class Saldiri:
     def __init__(self, vehicle: Vehicle, drone_conf: dict, hedef_siniflari: dict=None, model_path: str=None, stop_event: threading.Event=threading.Event()):
@@ -62,7 +63,6 @@ class Saldiri:
         
         # 1. Görüntü işleme
         self.image_handler = Image_Handler(stop_event=self.stop_event, window_name="Saldiri")
-        # self.image_handler.showing_image = False
         # TODO: Burayı kaldır
         self.image_handler.showing_image = False
         self.image_handler.ters = True
@@ -111,7 +111,7 @@ class Saldiri:
 
     def _gimbal_tara(self):
         """Gimbal'i zigzag patern ile hareket ettirerek aktif hedefi arar."""
-        self.gimbal_pos = (90, 90)
+        self.gimbal_pos = (self.gimbal_pos_max[0], int(self.gimbal_pos_max[1] / 2))
         step = 20
         x_min, x_max = self.gimbal_pos_min[1], self.gimbal_pos_max[1] + step
 
@@ -155,8 +155,8 @@ class Saldiri:
                 move_x = dx if abs(dx) > self.camera_deadzone else 0
                 move_y = dy if abs(dy) > self.camera_deadzone else 0
 
-                move_x *= 0.8
-                move_y *= 0.8
+                move_x *= 0.4
+                move_y *= 0.4
 
                 self.gimbal_pos = gimbal_new_angles(self.gimbal_pos, (move_y, move_x), 
                                                     self.gimbal_pos_min, self.gimbal_pos_max)
@@ -167,6 +167,9 @@ class Saldiri:
         print("Servo kilitlenme sistemi durduruldu")
 
     def _hedefe_git(self, drone_dondur: bool=True):
+        lock_stopper = threading.Event()
+        threading.Thread(target=self._gimbal_lock, args=(lock_stopper, ), daemon=True).start()
+
         bulundu = self._gimbal_tara()
 
         if self.stop_event.is_set():
@@ -175,11 +178,12 @@ class Saldiri:
         if bulundu:
             print(f"Hedef {self.aktif_hedef} taramada bulundu")
 
-            lock_stopper = threading.Event()
-            threading.Thread(target=self._gimbal_lock, args=(lock_stopper, ), daemon=True).start()
+            start_time = time.time()
+            while not self.stop_event.is_set() and time.time() - start_time < 2:
+                time.sleep(0.05)
 
             print(f"Drone hedefe yonlendiriliyor")
-            yaw_angle = 90 - self.gimbal_pos[1]
+            yaw_angle = self.gimbal_pos[1] - 90
             self.vehicle.set_yaw(turn_angle=yaw_angle, default_speed=30, drone_id=self.drone_id)
 
             start_time = time.time()
@@ -192,7 +196,7 @@ class Saldiri:
             
             print(f"Drone hedefe donduruldu")
 
-            yaw_angle = 90 - self.gimbal_pos[1]
+            yaw_angle = self.gimbal_pos[1] - 90
             if abs(yaw_angle) > 8:
                 print(f"İnce ayar yapılıyor")
                 self.vehicle.set_yaw(turn_angle=yaw_angle, default_speed=30, drone_id=self.drone_id)
@@ -200,13 +204,32 @@ class Saldiri:
                 start_time = time.time()
                 while not self.stop_event.is_set() and time.time() - start_time < 5:
                     time.sleep(0.05)
+                
+                if not self._hedef_algilandi_mi():
+                    print(f"{self.aktif_hedef} kayboldu tekrar tarama yapılıyor")
+                    return self._hedefe_git(drone_dondur=True)
 
-            aci_radyan = math.radians(self.vehicle.get_pitch(drone_id=self.drone_id) + self.gimbal_pos[0])
+            gimbal_positions = []
+            start_time = time.time()
+            while not self.stop_event.is_set() and time.time() - start_time < 2:
+                gimbal_positions.append(self.gimbal_pos)
+                time.sleep(0.05)
+
+            ortalama_gimbal_pos = [sum(col) / len(col) for col in zip(*gimbal_positions)]
+
+            aci_radyan = math.radians(self.vehicle.get_pitch(drone_id=self.drone_id) + ortalama_gimbal_pos[0])
             hedef_mesafe = self.vehicle.get_pos(drone_id=self.drone_id)[2] * math.tan(aci_radyan)
 
             hedef_mesafe *= 0.9
 
-            hedef_pos = calc_pos(loc=self.vehicle.get_pos(drone_id=self.drone_id), distance=hedef_mesafe, bearing=self.gimbal_pos[1])
+            gimbal_yaw = ortalama_gimbal_pos[1] - 90
+            bearing = gimbal_yaw + self.vehicle.get_yaw(drone_id=self.drone_id)
+            print(f"gimbal x derecesi: {ortalama_gimbal_pos[1]}\ngimbal x derece yaw dondurmesi: {gimbal_yaw}\ngimbal x + yaw: {bearing}")
+            hedef_pos = calc_pos(loc=self.vehicle.get_pos(drone_id=self.drone_id), distance=hedef_mesafe, bearing=bearing)
+            print(f"Hedef konumu hesaplandi: {hedef_pos}\nHedef mesafesi {hedef_mesafe} metre uzajta")
+
+            self.gimbal_pos = [self.gimbal_pos_min[0], int(self.gimbal_pos_max[1]/2)]
+            self.client.send_data(f"{self.gimbal_pos[0]}|{self.gimbal_pos[1]}")
 
             self.vehicle.go_to(loc=hedef_pos, alt=self.alt, drone_id=self.drone_id)
             while not self.stop_event.is_set():
@@ -247,6 +270,9 @@ class Saldiri:
             print("[SALDIRI]>> Hedef sınıfı tanımlanmamış, görev iptal.")
             return
 
+        self.gimbal_pos = [self.gimbal_pos_min[0], int(self.gimbal_pos_max[1] / 2)]
+        self.client.send_data(f"{self.gimbal_pos[0]}|{self.gimbal_pos[1]}")
+        
         self.kalkis()
         time.sleep(2)
 
