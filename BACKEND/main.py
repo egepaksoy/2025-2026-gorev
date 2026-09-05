@@ -12,7 +12,7 @@ from libs.image_proccesser import Handler
 
 # Drone kontrolleri icin
 from gozlemci_handler import Gozlemci
-from saldiri_handler import Saldiri
+from saldiri_handler_ege import Saldiri
 
 
 # TODO: ctrl+c'de kamera kapanmadıgı icin kod cikmiyor
@@ -266,11 +266,6 @@ def shutdown_event():
     system_running.set()
     stop_event.set() # Bu çok önemli, blocking pymavlink çağrılarını uyandırır
     
-    if saldiri:
-        try:
-            saldiri.kapat()
-        except:
-            pass
     if vehicle_instance:
         try:
             vehicle_instance.close()
@@ -284,11 +279,6 @@ def handle_exit(sig, frame):
     system_running.set()
     stop_event.set()
     
-    if saldiri:
-        try:
-            saldiri.kapat()
-        except:
-            pass
     if vehicle_instance:
         try:
             vehicle_instance.close()
@@ -466,7 +456,6 @@ def delete_target(request: TargetDeleteRequest):
 def failsafe_mission():
     if not vehicle_instance: raise HTTPException(503, "Drone not connected")
 
-    saldiri.kapat()
     failsafe(vehicle=vehicle_instance)
 
     return CommandResponse(status="success", message="Landing initiated")
